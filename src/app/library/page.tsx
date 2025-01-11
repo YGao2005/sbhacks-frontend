@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "./../components/ui/button";
 import { Checkbox } from "./../components/ui/checkbox";
 
@@ -13,38 +14,29 @@ interface Paper {
   selected?: boolean;
 }
 
-interface SearchParams {
-  thesis: string;
-  page?: number;
-}
-
 export default function LibraryPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [searchResults, setSearchResults] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedPapers, setSelectedPapers] = useState<Set<number>>(new Set());
 
-  // In a real application, you would get this from your router or state management
-  const currentThesis = "The effects of smoking on public health";
+  const thesis = searchParams.get('thesis');
+  const isNewCollection = searchParams.get('newCollection') === 'true';
 
-  // Simulate a search API call
-  const searchPapers = async (params: SearchParams) => {
+  const searchPapers = async (searchQuery: string) => {
     setLoading(true);
     try {
-      // This is where you would make an actual API call
-      // For now, we'll simulate it with mock data
+      // This is where you would make your actual API call
+      // For now, using mock data
       await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
 
-      // Mock results - replace this with your actual API call
       const mockResults: Paper[] = [
         { id: 1, author: "Jullu Jalal", type: "Paper", title: "The health consequences of smoking: a report of Surgeon General", year: 2019 },
         { id: 2, author: "Minerva Barnett", type: "Article", title: "Systemic effects of smoking", year: 2007 },
         { id: 3, author: "Peter Lewis", type: "Paper", title: "Smoking and gender", year: 2012 },
         { id: 4, author: "Anthony Briggs", type: "Article", title: "Uncovering the effects of smoking: historical perspective", year: 2019 },
-        { id: 5, author: "Clifford Morgan", type: "Article", title: "Smoking and passive smoking in Chinese, 2002", year: 2011 },
-        { id: 6, author: "Cecilia Webster", type: "Paper", title: "Mortality from smoking worldwide", year: 2010 },
-        { id: 7, author: "Harvey Manning", type: "Paper", title: "The economics of smoking", year: 2024 },
-        { id: 8, author: "Willie Blake", type: "Article", title: "Smoking, smoking cessation, and major depression", year: 2022 },
-        { id: 9, author: "Minerva Barnett", type: "Paper", title: "Smoking and reproduction", year: 2023 }
+        { id: 5, author: "Clifford Morgan", type: "Article", title: "Smoking and passive smoking in Chinese, 2002", year: 2011 }
       ];
 
       setSearchResults(mockResults);
@@ -56,39 +48,46 @@ export default function LibraryPage() {
     }
   };
 
-  // Initial search when component mounts
   useEffect(() => {
-    if (currentThesis) {
-      searchPapers({ thesis: currentThesis });
+    if (thesis && isNewCollection) {
+      searchPapers(thesis);
+    } else if (!isNewCollection) {
+      // Redirect to collections page or show message if not a new collection
+      router.push('/collections');
     }
-  }, [currentThesis]);
+  }, [thesis, isNewCollection]);
 
-  const togglePaperSelection = (paperId: number) => {
+  const handleJumpToChat = () => {
+    router.push('/chat');
+  };
+
+  const togglePaperSelection = (id: number) => {
     setSelectedPapers(prev => {
-      const newSelection = new Set(prev);
-      if (newSelection.has(paperId)) {
-        newSelection.delete(paperId);
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
       } else {
-        newSelection.add(paperId);
+        newSet.add(id);
       }
-      return newSelection;
+      return newSet;
     });
   };
 
   const handleSaveToCollection = () => {
+    // Handle saving selected papers to the collection
     const selectedPapersData = searchResults.filter(paper => 
       selectedPapers.has(paper.id)
     );
-    console.log('Saving papers to collection:', selectedPapersData);
-    // Implement your save logic here
+    console.log('Saving papers:', selectedPapersData);
+    // Add your save logic here
   };
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <h1 className="text-2xl font-semibold text-gray-900 text-center mb-8">
-          Results for your thesis
+        <h1 className="text-2xl font-semibold text-black text-center mb-8">
+          {thesis ? `Results for "${decodeURIComponent(thesis)}"` : 'Search Results'}
         </h1>
 
         {/* Results List */}
@@ -100,7 +99,7 @@ export default function LibraryPage() {
           ) : (
             searchResults.map((paper) => (
               <div 
-                key={paper.id} 
+                key={paper.id}
                 className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
               >
                 <Checkbox
@@ -133,20 +132,21 @@ export default function LibraryPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-between items-center text-blue-500">
+        <div className="flex justify-between items-center">
           <Button 
             variant="outline" 
-            className="flex items-center space-x-2 text-gray-600 hover:text-blue-500 hover:bg-blue-50 transition-colors duration-200"
-            onClick={() => {/* Implement chat functionality */}}
+            className="flex items-center space-x-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-colors duration-200"
+            onClick={handleJumpToChat}
           >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-        <span>Jump to Chat</span>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <span>Jump to Chat</span>
           </Button>
 
           <Button 
-            className="bg-blue-500 hover:bg-blue-600 text-white flex items-center space-x-2 transition-colors duration-200"
+            className="bg-blue-500 hover:bg-blue-600 text-white flex items-center space-x-2"
             onClick={handleSaveToCollection}
             disabled={selectedPapers.size === 0}
           >
@@ -159,7 +159,7 @@ export default function LibraryPage() {
           <Button 
             variant="outline" 
             className="flex items-center space-x-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-colors duration-200"
-            onClick={() => {/* Implement find more sources */}}
+            onClick={() => {/* Add find more sources logic */}}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

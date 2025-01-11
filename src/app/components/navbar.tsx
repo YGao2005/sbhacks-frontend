@@ -7,10 +7,12 @@ import Image from 'next/image';
 const Navbar = () => {
   const pathname = usePathname();
 
+  const isLibraryActive = pathname === '/library' || pathname === '/chat';
+
   const navItems = [
-    { label: 'Dashboard', path: '/dashboard' },
-    { label: 'Library', path: '/library' },
-    { label: 'Citations', path: '/citations' },
+    { label: 'Dashboard', path: '/dashboard', isActive: pathname === '/dashboard' },
+    { label: 'Library', path: '/library', isActive: isLibraryActive },
+    { label: 'Citations', path: '/citations', isActive: pathname === '/citations' },
   ];
 
   return (
@@ -30,7 +32,7 @@ const Navbar = () => {
             key={item.path}
             href={item.path}
             className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-              pathname === item.path
+              item.isActive
                 ? 'text-blue-500 bg-blue-50'
                 : 'text-gray-600 hover:text-blue-500 hover:bg-blue-50'
             }`}

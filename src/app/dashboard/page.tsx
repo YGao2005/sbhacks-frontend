@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ interface Collection {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [collectionToDelete, setCollectionToDelete] = useState<Collection | null>(null);
@@ -51,8 +53,7 @@ export default function DashboardPage() {
     }
   ]);
 
-const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!newCollection.title.trim()) return;
 
@@ -70,6 +71,10 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
 
     setNewCollection({ title: '', thesis: '' });
     setIsOpen(false);
+    
+    // Navigate to library with the thesis for searching
+    const encodedThesis = encodeURIComponent(newCollection.thesis || newCollection.title);
+    router.push(`/library?thesis=${encodedThesis}&newCollection=true`);
   };
 
   const handleDeleteClick = (collection: Collection) => {
@@ -83,6 +88,11 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
       setDeleteDialogOpen(false);
       setCollectionToDelete(null);
     }
+  };
+
+  const handleCollectionClick = (collection: Collection) => {
+    // For existing collections, we'll show their contents
+    router.push(`/collection/${collection.id}`);
   };
 
   return (
@@ -126,7 +136,7 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
                   <Input
                     id="title"
                     value={newCollection.title}
-                    onChange={(e) => setNewCollection({
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewCollection({
                       ...newCollection,
                       title: e.target.value
                     })}
@@ -141,7 +151,7 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
                   <Textarea
                     id="thesis"
                     value={newCollection.thesis}
-                    onChange={(e) => setNewCollection({
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewCollection({
                       ...newCollection,
                       thesis: e.target.value
                     })}
@@ -195,7 +205,8 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
           {collections.map((collection) => (
             <div 
               key={collection.id}
-              className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow group"
+              className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow group cursor-pointer"
+              onClick={() => handleCollectionClick(collection)}
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex-1">
