@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     
     // Make request to Semantic Scholar API
     const semanticScholarResponse = await fetch(
-      `https://api.semanticscholar.org/graph/v1/paper/search/match?query=${encodedQuery}&fields=${fields}`
+      `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodedQuery}&fields=${fields}`
     );
 
     console.log('Semantic Scholar API response status:', semanticScholarResponse.status);
@@ -40,27 +40,32 @@ export async function POST(req: NextRequest) {
     
     console.log('Received data from Semantic Scholar:', JSON.stringify(data, null, 2));
 
-    // Find the first paper with an openAccessPdf URL
-    const paper = data.papers?.find(p => p.openAccessPdf?.url);
-    
-    if (!paper) {
-      console.warn('No papers found for query:', query);
+    // Process up to 3 papers with PDF URLs
+    const processedPapers = data.data
+      .filter((paper: any) => paper.openAccessPdf?.url)
+      .slice(0, 3)
+      .map((paper: any) => ({
+        paperId: paper.paperId,
+        title: paper.title,
+        url: paper.url,
+        pdfUrl: paper.openAccessPdf.url,
+        authors: paper.authors.map((author: any) => ({
+          id: author.authorId,
+          name: author.name
+        }))
+      }));
+
+    if (processedPapers.length === 0) {
+      console.warn('No papers with PDF URLs found for query:', query);
       return NextResponse.json({ 
-        error: 'No papers found for this query',
+        error: 'No papers with PDF URLs found for this query',
         details: data 
       }, { status: 404 });
     }
 
-    // Extract author names if available
-    const authorNames = paper.authors 
-      ? paper.authors.map((author: any) => author.name).join(', ')
-      : 'Unknown Author';
-
     return NextResponse.json({ 
-      pdfUrl: paper.openAccessPdf.url,
-      title: paper.title,
-      author: authorNames,
-      year: paper.year || new Date().getFullYear()
+      total: data.total,
+      papers: processedPapers
     });
 
   } catch (error) {
