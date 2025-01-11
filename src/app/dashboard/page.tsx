@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Dialog,
@@ -29,46 +29,36 @@ export default function DashboardPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [collectionToDelete, setCollectionToDelete] = useState<Collection | null>(null);
   const [newCollection, setNewCollection] = useState({ title: '', thesis: '' });
-  const [collections, setCollections] = useState<Collection[]>([
-    {
-      id: '1',
-      name: 'Machine Learning',
-      thesis: 'Exploring advanced ML algorithms',
-      papersCount: 24,
-      lastUpdated: '2024-01-10'
-    },
-    {
-      id: '2',
-      name: 'Computer Vision',
-      thesis: 'Understanding visual data processing',
-      papersCount: 15,
-      lastUpdated: '2024-01-08'
-    },
-    {
-      id: '3',
-      name: 'Natural Language Processing',
-      thesis: 'Advancing language understanding',
-      papersCount: 31,
-      lastUpdated: '2024-01-05'
+  const [collections, setCollections] = useState<Collection[]>([]);
+
+  // Load collections from local storage on component mount
+  useEffect(() => {
+    const storedCollections = localStorage.getItem('collections');
+    if (storedCollections) {
+      setCollections(JSON.parse(storedCollections));
     }
-  ]);
+  }, []);
+
+  // Update local storage whenever collections change
+  useEffect(() => {
+    localStorage.setItem('collections', JSON.stringify(collections));
+  }, [collections]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!newCollection.title.trim()) return;
-
+  
     const newId = (collections.length + 1).toString();
-    setCollections([
-      ...collections,
-      {
-        id: newId,
-        name: newCollection.title,
-        thesis: newCollection.thesis,
-        papersCount: 0,
-        lastUpdated: new Date().toISOString().split('T')[0]
-      }
-    ]);
-
+    const newCollectionItem = {
+      id: newId,
+      name: newCollection.title,
+      thesis: newCollection.thesis,
+      papersCount: 0,
+      lastUpdated: new Date().toISOString().split('T')[0]
+    };
+  
+    setCollections([...collections, newCollectionItem]);
+  
     setNewCollection({ title: '', thesis: '' });
     setIsOpen(false);
     

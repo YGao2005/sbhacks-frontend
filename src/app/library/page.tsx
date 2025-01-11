@@ -18,11 +18,17 @@ interface Paper {
   selected?: boolean;
 }
 
+interface SearchResultGroup {
+  concept: string;
+  papers: Paper[];
+  total: number;
+}
+
 export default function LibraryPage() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [searchResults, setSearchResults] = useState<Paper[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResultGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,11 +38,33 @@ export default function LibraryPage() {
   const thesis = searchParams.get('thesis');
   const isNewCollection = searchParams.get('newCollection') === 'true';
 
-  const searchPapers = async (searchQuery: string) => {
-    console.log('Starting paper search with query:', searchQuery);
-    setLoading(true);
-    setError(null);
+  const getSemanticParts = async (query: string): Promise<string[]> => {
+    try {
+      const response = await fetch('/api/semanticparts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ user_query: query }),
+      });
 
+      if (!response.ok) {
+        throw new Error('Failed to get semantic parts');
+      }
+
+      const data = await response.json();
+      // Parse the JSON string from the response
+      console.log('Data:', data);
+      const parsedResponse = JSON.parse(data.response.replace('```json\n', '').replace('\n```', ''));
+      return parsedResponse.main_concepts;
+    } catch (error) {
+      console.error('Error getting semantic parts:', error);
+      throw error;
+    }
+  };
+
+
+  const searchPapers = async (searchQuery: string, concept: string): Promise<SearchResultGroup> => {
     try {
       const response = await fetch('/api/library', {
         method: 'POST',
@@ -46,48 +74,56 @@ export default function LibraryPage() {
         body: JSON.stringify({ query: searchQuery }),
       });
 
-      console.log('Response status:', response.status);
-
       if (!response.ok) {
-        const errorBody = await response.text();
-        console.error('API Error:', {
-          status: response.status,
-          statusText: response.statusText,
-          body: errorBody
-        });
-
-        setError(response.status === 404 
-          ? `No papers found for query: ${searchQuery}` 
-          : `Error searching papers: ${response.statusText}`
-        );
-        setSearchResults([]);
-        return;
+        throw new Error(`Error searching papers: ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log('Received data:', data);
       
-      // Check if data has papers and total
       if (!data.papers || data.papers.length === 0) {
-        setError('No papers found for the given search terms.');
-        setSearchResults([]);
-        return;
+        return {
+          concept,
+          papers: [],
+          total: 0
+        };
       }
 
-      // Transform API results to our Paper interface
       const results: Paper[] = data.papers.map((paper: any) => ({
-        id: paper.paperId, // Use paperId as the unique identifier
-        authors: paper.authors || [], // Ensure authors array exists
+        id: paper.paperId,
+        authors: paper.authors || [],
         url: paper.url,
-        type: 'Paper', 
+        type: 'Paper',
         title: paper.title,
-        year: new Date().getFullYear(), // Default to current year
+        year: new Date().getFullYear(),
         pdfUrl: paper.pdfUrl
       }));
 
-      setSearchResults(results);
-      setTotalResults(data.total || results.length);
+      return {
+        concept,
+        papers: results,
+        total: data.total || results.length
+      };
+    } catch (error) {
+      console.error(`Search error for concept "${concept}":`, error);
+      throw error;
+    }
+  };
+
+  const performSemanticSearch = async (mainQuery: string) => {
+    console.log('Performing semantic search for:', mainQuery);
+    setLoading(true);
+    setError(null);
+    try {
+      // Get semantic parts
+      const concepts = await getSemanticParts(mainQuery);
       
+      // Search papers for each concept
+      const searchPromises = concepts.map(concept => 
+        searchPapers(concept, concept)
+      );
+
+      const results = await Promise.all(searchPromises);
+      setSearchResults(results);
     } catch (error) {
       console.error('Comprehensive search error:', error);
       setError(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -98,11 +134,8 @@ export default function LibraryPage() {
   };
 
   useEffect(() => {
-    console.log('Component mounted with thesis:', thesis);
-    console.log('Is new collection:', isNewCollection);
-
     if (thesis && isNewCollection) {
-      searchPapers(thesis);
+      performSemanticSearch(thesis);
     } else if (!isNewCollection) {
       router.push('/collections');
     }
@@ -124,9 +157,13 @@ export default function LibraryPage() {
     });
   };
 
+
   const handleSaveToCollection = async () => {
+    // Get all papers from all groups
+    const allPapers = searchResults.flatMap(group => group.papers);
+    
     // Filter selected papers with PDF URLs
-    const selectedPapersWithPdf = searchResults.filter(paper => 
+    const selectedPapersWithPdf = allPapers.filter(paper => 
       selectedPapers.has(paper.id) && paper.pdfUrl
     );
 
@@ -141,15 +178,12 @@ export default function LibraryPage() {
     setUploadLoading(true);
     const uploadPromises = selectedPapersWithPdf.map(async (paper) => {
       try {
-        // Fetch the PDF URL to get the file
         const response = await fetch(paper.pdfUrl!);
         const blob = await response.blob();
 
-        // Create FormData to send the PDF
         const formData = new FormData();
         formData.append('pdf', blob, `${paper.id}_${paper.title.slice(0, 50)}.pdf`);
 
-        // Send to upload API
         const uploadResponse = await fetch('http://127.0.0.1:5000/upload_pdf', {
           method: 'POST',
           body: formData
@@ -176,12 +210,9 @@ export default function LibraryPage() {
 
     try {
       const uploadResults = await Promise.all(uploadPromises);
-
-      // Process upload results
       const successCount = uploadResults.filter(r => r.status === 'success').length;
       const errorCount = uploadResults.filter(r => r.status === 'error').length;
 
-      // Show toast notifications
       if (successCount > 0) {
         toast({
           title: "Upload Successful",
@@ -198,7 +229,6 @@ export default function LibraryPage() {
         });
       }
 
-      // Optionally, clear selection after upload
       setSelectedPapers(new Set());
     } catch (error) {
       console.error('Comprehensive upload error:', error);
@@ -237,19 +267,10 @@ export default function LibraryPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
         <h1 className="text-2xl font-semibold text-black text-center mb-8">
           {thesis ? `Results for "${decodeURIComponent(thesis)}"` : 'Search Results'}
         </h1>
 
-        {/* Total Results */}
-        {totalResults > 0 && (
-          <div className="text-center text-gray-600 mb-4">
-            Total results: {totalResults}
-          </div>
-        )}
-
-        {/* Error Message */}
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
             <strong className="font-bold">Error: </strong>
@@ -257,64 +278,69 @@ export default function LibraryPage() {
           </div>
         )}
 
-        {/* Results List */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
-          {loading ? (
-            <div className="flex justify-center items-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            </div>
-          ) : (
-            searchResults.length > 0 ? (
-              searchResults.map((paper) => (
-                <div 
-                  key={paper.id}
-                  className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
-                >
-                  <Checkbox
-                    checked={selectedPapers.has(paper.id)}
-                    onCheckedChange={() => togglePaperSelection(paper.id)}
-                    className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
-                  />
-                  <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center mb-1">
-                      <span className="text-sm font-medium text-gray-500">
-                        {paper.authors.length > 0 
-                          ? paper.authors.map(author => author.name).join(', ') 
-                          : 'Unknown Author'}
-                      </span>
-                      <span className={`ml-3 px-2 py-1 text-xs rounded bg-green-100 text-green-800`}>
-                        {paper.type}
-                      </span>
+        {loading ? (
+          <div className="flex justify-center items-center h-32">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          </div>
+        ) : (
+          searchResults.map((group, index) => (
+            <div key={index} className="mb-8">
+              <h2 className="text-xl font-semibold mb-4 text-gray-800">
+                {group.concept} ({group.total} results)
+              </h2>
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
+                {group.papers.length > 0 ? (
+                  group.papers.map((paper) => (
+                    <div 
+                      key={paper.id}
+                      className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
+                    >
+                      <Checkbox
+                        checked={selectedPapers.has(paper.id)}
+                        onCheckedChange={() => togglePaperSelection(paper.id)}
+                        className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
+                      />
+                      <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center mb-1">
+                          <span className="text-sm font-medium text-gray-500">
+                            {paper.authors.length > 0 
+                              ? paper.authors.map(author => author.name).join(', ') 
+                              : 'Unknown Author'}
+                          </span>
+                          <span className="ml-3 px-2 py-1 text-xs rounded bg-green-100 text-green-800">
+                            {paper.type}
+                          </span>
+                        </div>
+                        <h3 className="text-gray-900">{paper.title}</h3>
+                        {paper.url && (
+                          <a 
+                            href={paper.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-blue-500 text-sm hover:underline"
+                          >
+                            Open paper
+                          </a>
+                        )}
+                      </div>
+                      <span className="text-sm text-gray-500">{paper.year}</span>
                     </div>
-                    <h3 className="text-gray-900">{paper.title}</h3>
-                    {paper.url && (
-                      <a 
-                        href={paper.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="text-blue-500 text-sm hover:underline"
-                      >
-                        Open paper
-                      </a>
-                    )}
+                  ))
+                ) : (
+                  <div className="text-center p-8 text-gray-500">
+                    No results found for this concept.
                   </div>
-                  <span className="text-sm text-gray-500">{paper.year}</span>
-                </div>
-              ))
-            ) : (
-              <div className="text-center p-8 text-gray-500">
-                No results found. Try a different search query.
+                )}
               </div>
-            )
-          )}
-        </div>
+            </div>
+          ))
+        )}
 
-        {/* Action Buttons (remaining code stays the same) */}
         <div className="flex justify-between items-center">
           <Button 
             variant="outline" 
@@ -331,18 +357,25 @@ export default function LibraryPage() {
           <Button 
             className="bg-blue-500 hover:bg-blue-600 text-white flex items-center space-x-2"
             onClick={handleSaveToCollection}
-            disabled={selectedPapers.size === 0}
+            disabled={selectedPapers.size === 0 || uploadLoading}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span>Save to Collection</span>
+            {uploadLoading ? (
+              <svg className="animate-spin h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            )}
+            <span>{uploadLoading ? 'Uploading...' : 'Save to Collection'}</span>
           </Button>
 
           <Button 
             variant="outline" 
             className="flex items-center space-x-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-colors duration-200"
-            onClick={() => {/* Add find more sources logic */}}
+            onClick={() => router.push('/collections')}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
