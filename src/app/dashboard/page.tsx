@@ -1,158 +1,261 @@
 'use client';
 
-import Link from 'next/link';
+import { useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "./../components/ui/dialog";
+import { Button } from "./../components/ui/button";
+import { Input } from "./../components/ui/input";
+import { Textarea } from "./../components/ui/textarea";
 
-const DashboardPage = () => {
+interface Collection {
+  id: string;
+  name: string;
+  thesis?: string;
+  papersCount: number;
+  lastUpdated: string;
+}
+
+export default function DashboardPage() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [collectionToDelete, setCollectionToDelete] = useState<Collection | null>(null);
+  const [newCollection, setNewCollection] = useState({ title: '', thesis: '' });
+  const [collections, setCollections] = useState<Collection[]>([
+    {
+      id: '1',
+      name: 'Machine Learning',
+      thesis: 'Exploring advanced ML algorithms',
+      papersCount: 24,
+      lastUpdated: '2024-01-10'
+    },
+    {
+      id: '2',
+      name: 'Computer Vision',
+      thesis: 'Understanding visual data processing',
+      papersCount: 15,
+      lastUpdated: '2024-01-08'
+    },
+    {
+      id: '3',
+      name: 'Natural Language Processing',
+      thesis: 'Advancing language understanding',
+      papersCount: 31,
+      lastUpdated: '2024-01-05'
+    }
+  ]);
+
+const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+
+    e.preventDefault();
+    if (!newCollection.title.trim()) return;
+
+    const newId = (collections.length + 1).toString();
+    setCollections([
+      ...collections,
+      {
+        id: newId,
+        name: newCollection.title,
+        thesis: newCollection.thesis,
+        papersCount: 0,
+        lastUpdated: new Date().toISOString().split('T')[0]
+      }
+    ]);
+
+    setNewCollection({ title: '', thesis: '' });
+    setIsOpen(false);
+  };
+
+  const handleDeleteClick = (collection: Collection) => {
+    setCollectionToDelete(collection);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (collectionToDelete) {
+      setCollections(collections.filter(collection => collection.id !== collectionToDelete.id));
+      setDeleteDialogOpen(false);
+      setCollectionToDelete(null);
+    }
+  };
+
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <div className="w-80 bg-white p-6 border-r border-gray-200">
-        {/* New Chat Button */}
-        <button className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-lg py-2 mb-6">
-          + New Chat
-        </button>
-
-        {/* Papers Section */}
-        <div className="mb-8">
-          <h3 className="text-sm font-medium text-gray-700 mb-4">Papers</h3>
-          <div className="space-y-2">
-            <div className="flex items-center space-x-3 p-2 bg-blue-50 rounded-lg">
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span className="flex-1 text-sm">Cancer and leth...</span>
-              <span className="text-xs text-gray-500">2019</span>
-            </div>
-            <div className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-lg">
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span className="flex-1 text-sm">Newborn birth d...</span>
-              <span className="text-xs text-gray-500">2020</span>
-            </div>
-            {/* More papers... */}
-          </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Main Content */}
+      <main className="px-8 py-6">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
+          <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-blue-500 hover:bg-blue-600 text-white">
+                <svg 
+                  className="w-5 h-5 mr-2" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth="2" 
+                    d="M12 6v6m0 0v6m0-6h6m-6 0H6" 
+                  />
+                </svg>
+                New Collection
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create New Collection</DialogTitle>
+                <DialogDescription>
+                  Add a new collection to organize your research papers.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="title" className="text-sm font-medium">
+                    Title
+                  </label>
+                  <Input
+                    id="title"
+                    value={newCollection.title}
+                    onChange={(e) => setNewCollection({
+                      ...newCollection,
+                      title: e.target.value
+                    })}
+                    placeholder="Enter collection title"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="thesis" className="text-sm font-medium">
+                    Thesis
+                  </label>
+                  <Textarea
+                    id="thesis"
+                    value={newCollection.thesis}
+                    onChange={(e) => setNewCollection({
+                      ...newCollection,
+                      thesis: e.target.value
+                    })}
+                    placeholder="Enter your research thesis"
+                    rows={4}
+                  />
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <Button 
+                    type="button" 
+                    variant="outline"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit">Create Collection</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
 
-        {/* Charts and Graphs Section */}
-        <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-4">Charts and Graphs</h3>
-          <div className="space-y-2">
-            <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 bg-cyan-400 rounded"></div>
-              <span className="text-sm text-gray-600">PI smoking percentages</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 bg-blue-400 rounded"></div>
-              <span className="text-sm text-gray-600">Histogram on 2020 deat...</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 bg-orange-400 rounded"></div>
-              <span className="text-sm text-gray-600">Some chart</span>
-            </div>
-          </div>
-          <button className="mt-4 text-sm text-gray-500 flex items-center">
-            <span className="mr-2">+</span>
-            Create New Chart
-          </button>
-        </div>
-      </div>
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Collection</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete "{collectionToDelete?.name}"? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex space-x-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteConfirm}
+              >
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
-        {/* Chat Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center">
-            <button className="mr-4">
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <h1 className="text-xl font-semibold">Effects of Smoking In Low-Income Communities</h1>
-          </div>
-          <div className="mt-4 flex items-center text-sm text-gray-600">
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-            </svg>
-            Addressing the issue of Lorem Ipsum
-          </div>
-        </div>
-
-        {/* Chat Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          <div className="flex items-start space-x-3">
-            <div className="w-8 h-8 rounded-full bg-gray-200"></div>
-            <div className="flex-1">
-              <div className="bg-gray-100 rounded-lg p-4">
-                <p>It is a long established fact that a reader will be distracted by the readable content of a page when looking at its layout. The point of using Lorem Ipsum is that it has a more-or-less normal distribution of letters.</p>
-              </div>
-              <div className="mt-1 flex justify-between items-center">
-                <span className="text-xs text-gray-500">6:30 pm</span>
-                <button className="text-gray-400">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+        {/* Collections Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {collections.map((collection) => (
+            <div 
+              key={collection.id}
+              className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow group"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex-1">
+                  <h3 className="text-lg font-medium text-gray-900">{collection.name}</h3>
+                  <span className="text-sm text-gray-500">{collection.papersCount} papers</span>
+                </div>
+                <button
+                  onClick={() => handleDeleteClick(collection)}
+                  className="text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  <svg 
+                    className="w-5 h-5" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      strokeWidth="2" 
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
+                    />
                   </svg>
                 </button>
               </div>
-            </div>
-          </div>
-
-          <div className="flex items-start justify-end">
-            <div className="max-w-3xl">
-              <div className="bg-blue-500 text-white rounded-lg p-4">
-                <p>There are many variations of passages of Lorem Ipsum available, but the majority have suffered alteration in some form, by injected humour,</p>
-              </div>
-              <div className="mt-1 flex justify-end items-center">
-                <span className="text-xs text-gray-500">6:34 pm</span>
-                <button className="text-gray-400 ml-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                  </svg>
-                </button>
+              {collection.thesis && (
+                <p className="text-sm text-gray-600 mb-3 line-clamp-2">{collection.thesis}</p>
+              )}
+              <div className="text-sm text-gray-500">
+                Last updated {new Date(collection.lastUpdated).toLocaleDateString()}
               </div>
             </div>
-          </div>
+          ))}
         </div>
 
-        {/* Message Input */}
-        <div className="bg-white border-t border-gray-200 p-4">
-          <div className="flex items-center space-x-2">
-            <button className="p-2 text-gray-500 hover:text-gray-600">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+        {/* Empty State */}
+        {collections.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-96">
+            <div className="bg-gray-100 rounded-full p-4 mb-4">
+              <svg 
+                className="w-8 h-8 text-gray-400" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth="2" 
+                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" 
+                />
               </svg>
-            </button>
-            <input
-              type="text"
-              placeholder="Write message"
-              className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
-            />
-            <button className="p-2 text-gray-500 hover:text-gray-600">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-              </svg>
-            </button>
-            <button className="p-2 text-gray-500 hover:text-gray-600">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </button>
-            <button className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center">
-              Send
-              <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-              </svg>
-            </button>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Collections Yet</h3>
+            <p className="text-gray-500 text-center max-w-sm">
+              Create your first collection to start organizing your research papers
+            </p>
           </div>
-        </div>
-      </div>
+        )}
+      </main>
     </div>
   );
-};
-
-export default DashboardPage;
+}
