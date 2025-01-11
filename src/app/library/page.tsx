@@ -4,55 +4,106 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "./../components/ui/button";
 import { Checkbox } from "./../components/ui/checkbox";
+import { useToast } from "@/hooks/use-toast"
+import { url } from 'inspector';
 
 interface Paper {
-  id: number;
-  author: string;
+  id: string;
+  authors: { id: string; name: string }[];
   type: 'Paper' | 'Article';
   title: string;
+  url: string;
   year: number;
+  pdfUrl?: string;
   selected?: boolean;
 }
 
 export default function LibraryPage() {
+  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchResults, setSearchResults] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedPapers, setSelectedPapers] = useState<Set<number>>(new Set());
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedPapers, setSelectedPapers] = useState<Set<string>>(new Set());
+  const [totalResults, setTotalResults] = useState(0);
 
   const thesis = searchParams.get('thesis');
   const isNewCollection = searchParams.get('newCollection') === 'true';
 
   const searchPapers = async (searchQuery: string) => {
+    console.log('Starting paper search with query:', searchQuery);
     setLoading(true);
+    setError(null);
+
     try {
-      // This is where you would make your actual API call
-      // For now, using mock data
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
+      const response = await fetch('/api/library', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: searchQuery }),
+      });
 
-      const mockResults: Paper[] = [
-        { id: 1, author: "Jullu Jalal", type: "Paper", title: "The health consequences of smoking: a report of Surgeon General", year: 2019 },
-        { id: 2, author: "Minerva Barnett", type: "Article", title: "Systemic effects of smoking", year: 2007 },
-        { id: 3, author: "Peter Lewis", type: "Paper", title: "Smoking and gender", year: 2012 },
-        { id: 4, author: "Anthony Briggs", type: "Article", title: "Uncovering the effects of smoking: historical perspective", year: 2019 },
-        { id: 5, author: "Clifford Morgan", type: "Article", title: "Smoking and passive smoking in Chinese, 2002", year: 2011 }
-      ];
+      console.log('Response status:', response.status);
 
-      setSearchResults(mockResults);
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error('API Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorBody
+        });
+
+        setError(response.status === 404 
+          ? `No papers found for query: ${searchQuery}` 
+          : `Error searching papers: ${response.statusText}`
+        );
+        setSearchResults([]);
+        return;
+      }
+
+      const data = await response.json();
+      console.log('Received data:', data);
+      
+      // Check if data has papers and total
+      if (!data.papers || data.papers.length === 0) {
+        setError('No papers found for the given search terms.');
+        setSearchResults([]);
+        return;
+      }
+
+      // Transform API results to our Paper interface
+      const results: Paper[] = data.papers.map((paper: any) => ({
+        id: paper.paperId, // Use paperId as the unique identifier
+        authors: paper.authors || [], // Ensure authors array exists
+        url: paper.url,
+        type: 'Paper', 
+        title: paper.title,
+        year: new Date().getFullYear(), // Default to current year
+        pdfUrl: paper.pdfUrl
+      }));
+
+      setSearchResults(results);
+      setTotalResults(data.total || results.length);
+      
     } catch (error) {
-      console.error('Error searching papers:', error);
-      // Handle error appropriately
+      console.error('Comprehensive search error:', error);
+      setError(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setSearchResults([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log('Component mounted with thesis:', thesis);
+    console.log('Is new collection:', isNewCollection);
+
     if (thesis && isNewCollection) {
       searchPapers(thesis);
     } else if (!isNewCollection) {
-      // Redirect to collections page or show message if not a new collection
       router.push('/collections');
     }
   }, [thesis, isNewCollection]);
@@ -61,7 +112,7 @@ export default function LibraryPage() {
     router.push('/chat');
   };
 
-  const togglePaperSelection = (id: number) => {
+  const togglePaperSelection = (id: string) => {
     setSelectedPapers(prev => {
       const newSet = new Set(prev);
       if (newSet.has(id)) {
@@ -73,14 +124,115 @@ export default function LibraryPage() {
     });
   };
 
-  const handleSaveToCollection = () => {
-    // Handle saving selected papers to the collection
-    const selectedPapersData = searchResults.filter(paper => 
-      selectedPapers.has(paper.id)
+  const handleSaveToCollection = async () => {
+    // Filter selected papers with PDF URLs
+    const selectedPapersWithPdf = searchResults.filter(paper => 
+      selectedPapers.has(paper.id) && paper.pdfUrl
     );
-    console.log('Saving papers:', selectedPapersData);
-    // Add your save logic here
+
+    if (selectedPapersWithPdf.length === 0) {
+      toast({
+        title: "No PDFs to upload",
+        description: "No selected papers have PDF URLs to upload",
+      });
+      return;
+    }
+
+    setUploadLoading(true);
+    const uploadPromises = selectedPapersWithPdf.map(async (paper) => {
+      try {
+        // Fetch the PDF URL to get the file
+        const response = await fetch(paper.pdfUrl!);
+        const blob = await response.blob();
+
+        // Create FormData to send the PDF
+        const formData = new FormData();
+        formData.append('pdf', blob, `${paper.id}_${paper.title.slice(0, 50)}.pdf`);
+
+        // Send to upload API
+        const uploadResponse = await fetch('http://127.0.0.1:5000/upload_pdf', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Failed to upload PDF for paper: ${paper.title}`);
+        }
+
+        return { 
+          id: paper.id, 
+          title: paper.title, 
+          status: 'success' 
+        };
+      } catch (error) {
+        console.error(`Error uploading PDF for paper ${paper.title}:`, error);
+        return { 
+          id: paper.id, 
+          title: paper.title, 
+          status: 'error' 
+        };
+      }
+    });
+
+    try {
+      const uploadResults = await Promise.all(uploadPromises);
+
+      // Process upload results
+      const successCount = uploadResults.filter(r => r.status === 'success').length;
+      const errorCount = uploadResults.filter(r => r.status === 'error').length;
+
+      // Show toast notifications
+      if (successCount > 0) {
+        toast({
+          title: "Upload Successful",
+          description: `Successfully uploaded ${successCount} PDF(s)`,
+          variant: "default"
+        });
+      }
+
+      if (errorCount > 0) {
+        toast({
+          title: "Upload Partial Failure",
+          description: `Failed to upload ${errorCount} PDF(s)`,
+          variant: "destructive"
+        });
+      }
+
+      // Optionally, clear selection after upload
+      setSelectedPapers(new Set());
+    } catch (error) {
+      console.error('Comprehensive upload error:', error);
+      toast({
+        title: "Upload Failed",
+        description: "An error occurred while uploading PDFs",
+        variant: "destructive"
+      });
+    } finally {
+      setUploadLoading(false);
+    }
   };
+
+  // Modify the Button for saving to collection to show loading state
+  const SaveToCollectionButton = (
+    <Button 
+      className="bg-blue-500 hover:bg-blue-600 text-white flex items-center space-x-2"
+      onClick={handleSaveToCollection}
+      disabled={selectedPapers.size === 0 || uploadLoading}
+    >
+      {uploadLoading ? (
+        <svg className="animate-spin h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+      ) : (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      )}
+      <span>{uploadLoading ? 'Uploading...' : 'Save to Collection'}</span>
+    </Button>
+  );
+
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -90,6 +242,21 @@ export default function LibraryPage() {
           {thesis ? `Results for "${decodeURIComponent(thesis)}"` : 'Search Results'}
         </h1>
 
+        {/* Total Results */}
+        {totalResults > 0 && (
+          <div className="text-center text-gray-600 mb-4">
+            Total results: {totalResults}
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+            <strong className="font-bold">Error: </strong>
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
+
         {/* Results List */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
           {loading ? (
@@ -97,41 +264,57 @@ export default function LibraryPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
           ) : (
-            searchResults.map((paper) => (
-              <div 
-                key={paper.id}
-                className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
-              >
-                <Checkbox
-                  checked={selectedPapers.has(paper.id)}
-                  onCheckedChange={() => togglePaperSelection(paper.id)}
-                  className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
-                />
-                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center mb-1">
-                    <span className="text-sm font-medium">{paper.author}</span>
-                    <span className={`ml-3 px-2 py-1 text-xs rounded ${
-                      paper.type === 'Paper' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {paper.type}
-                    </span>
+            searchResults.length > 0 ? (
+              searchResults.map((paper) => (
+                <div 
+                  key={paper.id}
+                  className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
+                >
+                  <Checkbox
+                    checked={selectedPapers.has(paper.id)}
+                    onCheckedChange={() => togglePaperSelection(paper.id)}
+                    className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
+                  />
+                  <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
                   </div>
-                  <h3 className="text-gray-900">{paper.title}</h3>
+                  <div className="flex-1">
+                    <div className="flex items-center mb-1">
+                      <span className="text-sm font-medium text-gray-500">
+                        {paper.authors.length > 0 
+                          ? paper.authors.map(author => author.name).join(', ') 
+                          : 'Unknown Author'}
+                      </span>
+                      <span className={`ml-3 px-2 py-1 text-xs rounded bg-green-100 text-green-800`}>
+                        {paper.type}
+                      </span>
+                    </div>
+                    <h3 className="text-gray-900">{paper.title}</h3>
+                    {paper.url && (
+                      <a 
+                        href={paper.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-blue-500 text-sm hover:underline"
+                      >
+                        Open paper
+                      </a>
+                    )}
+                  </div>
+                  <span className="text-sm text-gray-500">{paper.year}</span>
                 </div>
-                <span className="text-sm text-gray-500">{paper.year}</span>
+              ))
+            ) : (
+              <div className="text-center p-8 text-gray-500">
+                No results found. Try a different search query.
               </div>
-            ))
+            )
           )}
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Buttons (remaining code stays the same) */}
         <div className="flex justify-between items-center">
           <Button 
             variant="outline" 
