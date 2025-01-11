@@ -6,11 +6,12 @@ import { Button } from "./../components/ui/button";
 import { Checkbox } from "./../components/ui/checkbox";
 
 interface Paper {
-  id: number;
+  id: string;
   author: string;
   type: 'Paper' | 'Article';
   title: string;
   year: number;
+  pdfUrl?: string;
   selected?: boolean;
 }
 
@@ -19,36 +20,95 @@ export default function LibraryPage() {
   const searchParams = useSearchParams();
   const [searchResults, setSearchResults] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedPapers, setSelectedPapers] = useState<Set<number>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [selectedPapers, setSelectedPapers] = useState<Set<string>>(new Set());
 
   const thesis = searchParams.get('thesis');
   const isNewCollection = searchParams.get('newCollection') === 'true';
 
   const searchPapers = async (searchQuery: string) => {
+    console.log('Starting paper search with query:', searchQuery);
     setLoading(true);
+    setError(null);
+
     try {
-      // This is where you would make your actual API call
-      // For now, using mock data
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
+      // Add multiple queries to get more comprehensive results
+      const queries = searchQuery.split(',').map(q => q.trim());
+      
+      const results: Paper[] = [];
+      
+      for (const query of queries) {
+        console.log(`Searching for query: ${query}`);
 
-      const mockResults: Paper[] = [
-        { id: 1, author: "Jullu Jalal", type: "Paper", title: "The health consequences of smoking: a report of Surgeon General", year: 2019 },
-        { id: 2, author: "Minerva Barnett", type: "Article", title: "Systemic effects of smoking", year: 2007 },
-        { id: 3, author: "Peter Lewis", type: "Paper", title: "Smoking and gender", year: 2012 },
-        { id: 4, author: "Anthony Briggs", type: "Article", title: "Uncovering the effects of smoking: historical perspective", year: 2019 },
-        { id: 5, author: "Clifford Morgan", type: "Article", title: "Smoking and passive smoking in Chinese, 2002", year: 2011 }
-      ];
+        try {
+          const response = await fetch('/api/library/search-papers', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query }),
+          });
 
-      setSearchResults(mockResults);
+          console.log('Response status:', response.status);
+          console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+          if (!response.ok) {
+            // Log the error response body
+            const errorBody = await response.text();
+            console.error(`API Error for query ${query}:`, {
+              status: response.status,
+              statusText: response.statusText,
+              body: errorBody
+            });
+
+            // If it's a 404, set a more specific error message
+            if (response.status === 404) {
+              setError(`No papers found for query: ${query}`);
+            } else {
+              setError(`Error searching papers: ${response.statusText}`);
+            }
+            continue;
+          }
+
+          const data = await response.json();
+          console.log('Received data:', data);
+          
+          // Create a paper object from the result
+          const paper: Paper = {
+            id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID
+            author: 'Unknown', // Semantic Scholar API might not return author in this endpoint
+            type: 'Paper', 
+            title: data.title || query,
+            year: new Date().getFullYear(), // Default to current year if not provided
+            pdfUrl: data.pdfUrl
+          };
+
+          results.push(paper);
+        } catch (queryError) {
+          console.error(`Error processing query ${query}:`, queryError);
+          setError(`Network error: ${queryError instanceof Error ? queryError.message : 'Unknown error'}`);
+        }
+      }
+
+      console.log('Final search results:', results);
+      setSearchResults(results);
+
+      // If no results after all queries
+      if (results.length === 0) {
+        setError('No papers found for the given search terms.');
+      }
     } catch (error) {
-      console.error('Error searching papers:', error);
-      // Handle error appropriately
+      console.error('Comprehensive search error:', error);
+      setError(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log('Component mounted with thesis:', thesis);
+    console.log('Is new collection:', isNewCollection);
+
     if (thesis && isNewCollection) {
       searchPapers(thesis);
     } else if (!isNewCollection) {
@@ -61,7 +121,7 @@ export default function LibraryPage() {
     router.push('/chat');
   };
 
-  const togglePaperSelection = (id: number) => {
+  const togglePaperSelection = (id: string) => {
     setSelectedPapers(prev => {
       const newSet = new Set(prev);
       if (newSet.has(id)) {
@@ -79,7 +139,7 @@ export default function LibraryPage() {
       selectedPapers.has(paper.id)
     );
     console.log('Saving papers:', selectedPapersData);
-    // Add your save logic here
+    // Add your save logic here, potentially sending PDF URLs to backend
   };
 
   return (
@@ -90,6 +150,14 @@ export default function LibraryPage() {
           {thesis ? `Results for "${decodeURIComponent(thesis)}"` : 'Search Results'}
         </h1>
 
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+            <strong className="font-bold">Error: </strong>
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
+
         {/* Results List */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
           {loading ? (
@@ -97,37 +165,49 @@ export default function LibraryPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
           ) : (
-            searchResults.map((paper) => (
-              <div 
-                key={paper.id}
-                className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
-              >
-                <Checkbox
-                  checked={selectedPapers.has(paper.id)}
-                  onCheckedChange={() => togglePaperSelection(paper.id)}
-                  className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
-                />
-                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center mb-1">
-                    <span className="text-sm font-medium">{paper.author}</span>
-                    <span className={`ml-3 px-2 py-1 text-xs rounded ${
-                      paper.type === 'Paper' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {paper.type}
-                    </span>
+            searchResults.length > 0 ? (
+              searchResults.map((paper) => (
+                <div 
+                  key={paper.id}
+                  className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
+                >
+                  <Checkbox
+                    checked={selectedPapers.has(paper.id)}
+                    onCheckedChange={() => togglePaperSelection(paper.id)}
+                    className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
+                  />
+                  <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
                   </div>
-                  <h3 className="text-gray-900">{paper.title}</h3>
+                  <div className="flex-1">
+                    <div className="flex items-center mb-1">
+                      <span className="text-sm font-medium">{paper.author}</span>
+                      <span className={`ml-3 px-2 py-1 text-xs rounded bg-green-100 text-green-800`}>
+                        {paper.type}
+                      </span>
+                    </div>
+                    <h3 className="text-gray-900">{paper.title}</h3>
+                    {paper.pdfUrl && (
+                      <a 
+                        href={paper.pdfUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-blue-500 text-sm hover:underline"
+                      >
+                        Open PDF
+                      </a>
+                    )}
+                  </div>
+                  <span className="text-sm text-gray-500">{paper.year}</span>
                 </div>
-                <span className="text-sm text-gray-500">{paper.year}</span>
+              ))
+            ) : (
+              <div className="text-center p-8 text-gray-500">
+                No results found. Try a different search query.
               </div>
-            ))
+            )
           )}
         </div>
 
