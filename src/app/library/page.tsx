@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "./../components/ui/button";
 import { Checkbox } from "./../components/ui/checkbox";
+import { useToast } from "@/hooks/use-toast"
 import { url } from 'inspector';
 
 interface Paper {
@@ -18,10 +19,12 @@ interface Paper {
 }
 
 export default function LibraryPage() {
+  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchResults, setSearchResults] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploadLoading, setUploadLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPapers, setSelectedPapers] = useState<Set<string>>(new Set());
   const [totalResults, setTotalResults] = useState(0);
@@ -121,13 +124,115 @@ export default function LibraryPage() {
     });
   };
 
-  const handleSaveToCollection = () => {
-    const selectedPapersData = searchResults.filter(paper => 
-      selectedPapers.has(paper.id)
+  const handleSaveToCollection = async () => {
+    // Filter selected papers with PDF URLs
+    const selectedPapersWithPdf = searchResults.filter(paper => 
+      selectedPapers.has(paper.id) && paper.pdfUrl
     );
-    console.log('Saving papers:', selectedPapersData);
-    // Add your save logic here
+
+    if (selectedPapersWithPdf.length === 0) {
+      toast({
+        title: "No PDFs to upload",
+        description: "No selected papers have PDF URLs to upload",
+      });
+      return;
+    }
+
+    setUploadLoading(true);
+    const uploadPromises = selectedPapersWithPdf.map(async (paper) => {
+      try {
+        // Fetch the PDF URL to get the file
+        const response = await fetch(paper.pdfUrl!);
+        const blob = await response.blob();
+
+        // Create FormData to send the PDF
+        const formData = new FormData();
+        formData.append('pdf', blob, `${paper.id}_${paper.title.slice(0, 50)}.pdf`);
+
+        // Send to upload API
+        const uploadResponse = await fetch('http://127.0.0.1:5000/upload_pdf', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Failed to upload PDF for paper: ${paper.title}`);
+        }
+
+        return { 
+          id: paper.id, 
+          title: paper.title, 
+          status: 'success' 
+        };
+      } catch (error) {
+        console.error(`Error uploading PDF for paper ${paper.title}:`, error);
+        return { 
+          id: paper.id, 
+          title: paper.title, 
+          status: 'error' 
+        };
+      }
+    });
+
+    try {
+      const uploadResults = await Promise.all(uploadPromises);
+
+      // Process upload results
+      const successCount = uploadResults.filter(r => r.status === 'success').length;
+      const errorCount = uploadResults.filter(r => r.status === 'error').length;
+
+      // Show toast notifications
+      if (successCount > 0) {
+        toast({
+          title: "Upload Successful",
+          description: `Successfully uploaded ${successCount} PDF(s)`,
+          variant: "default"
+        });
+      }
+
+      if (errorCount > 0) {
+        toast({
+          title: "Upload Partial Failure",
+          description: `Failed to upload ${errorCount} PDF(s)`,
+          variant: "destructive"
+        });
+      }
+
+      // Optionally, clear selection after upload
+      setSelectedPapers(new Set());
+    } catch (error) {
+      console.error('Comprehensive upload error:', error);
+      toast({
+        title: "Upload Failed",
+        description: "An error occurred while uploading PDFs",
+        variant: "destructive"
+      });
+    } finally {
+      setUploadLoading(false);
+    }
   };
+
+  // Modify the Button for saving to collection to show loading state
+  const SaveToCollectionButton = (
+    <Button 
+      className="bg-blue-500 hover:bg-blue-600 text-white flex items-center space-x-2"
+      onClick={handleSaveToCollection}
+      disabled={selectedPapers.size === 0 || uploadLoading}
+    >
+      {uploadLoading ? (
+        <svg className="animate-spin h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+      ) : (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      )}
+      <span>{uploadLoading ? 'Uploading...' : 'Save to Collection'}</span>
+    </Button>
+  );
+
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -211,7 +316,39 @@ export default function LibraryPage() {
 
         {/* Action Buttons (remaining code stays the same) */}
         <div className="flex justify-between items-center">
-          {/* ... (previous Button components remain unchanged) ... */}
+          <Button 
+            variant="outline" 
+            className="flex items-center space-x-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-colors duration-200"
+            onClick={handleJumpToChat}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <span>Jump to Chat</span>
+          </Button>
+
+          <Button 
+            className="bg-blue-500 hover:bg-blue-600 text-white flex items-center space-x-2"
+            onClick={handleSaveToCollection}
+            disabled={selectedPapers.size === 0}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span>Save to Collection</span>
+          </Button>
+
+          <Button 
+            variant="outline" 
+            className="flex items-center space-x-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-colors duration-200"
+            onClick={() => {/* Add find more sources logic */}}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <span>Find more sources</span>
+          </Button>
         </div>
       </div>
     </div>
