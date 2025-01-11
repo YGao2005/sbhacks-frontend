@@ -7,7 +7,10 @@ import Image from 'next/image';
 const Navbar = () => {
   const pathname = usePathname();
 
-  const isLibraryActive = pathname === '/library' || pathname === '/chat';
+  const isLibraryActive =
+    pathname === '/library' ||
+    pathname === '/chat' ||
+    pathname?.startsWith('/collections');
 
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', isActive: pathname === '/dashboard' },
