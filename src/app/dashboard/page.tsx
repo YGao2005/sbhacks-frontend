@@ -14,6 +14,16 @@ import {
 import { Button } from "./../components/ui/button";
 import { Input } from "./../components/ui/input";
 import { Textarea } from "./../components/ui/textarea";
+import { collection, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useCollection } from 'react-firebase-hooks/firestore';
+
+interface FirestoreCollection {
+  name: string;
+  thesis?: string;
+  papersCount: number;
+  lastUpdated: Date;
+}
 
 interface Collection {
   id: string;
@@ -29,42 +39,48 @@ export default function DashboardPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [collectionToDelete, setCollectionToDelete] = useState<Collection | null>(null);
   const [newCollection, setNewCollection] = useState({ title: '', thesis: '' });
-  const [collections, setCollections] = useState<Collection[]>([]);
 
-  // Load collections from local storage on component mount
-  useEffect(() => {
-    const storedCollections = localStorage.getItem('collections');
-    if (storedCollections) {
-      setCollections(JSON.parse(storedCollections));
-    }
-  }, []);
+  // Firebase collection reference
+  const collectionsRef = collection(db, 'collections');
+  const collectionsQuery = query(collectionsRef, orderBy('lastUpdated', 'desc'));
+  const [collectionsSnapshot, loading, error] = useCollection(collectionsQuery);
 
-  // Update local storage whenever collections change
-  useEffect(() => {
-    localStorage.setItem('collections', JSON.stringify(collections));
-  }, [collections]);
+  const collections: Collection[] = collectionsSnapshot?.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      name: data.name,
+      thesis: data.thesis,
+      papersCount: data.papersCount,
+      lastUpdated: data.lastUpdated.toDate().toISOString().split('T')[0]
+    };
+  }) || [];
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!newCollection.title.trim()) return;
   
-    const newId = (collections.length + 1).toString();
-    const newCollectionItem = {
-      id: newId,
-      name: newCollection.title,
-      thesis: newCollection.thesis,
-      papersCount: 0,
-      lastUpdated: new Date().toISOString().split('T')[0]
-    };
+    try {
+      // Create the new collection in Firebase
+      const newDoc: FirestoreCollection = {
+        name: newCollection.title,
+        thesis: newCollection.thesis,
+        papersCount: 0,
+        lastUpdated: new Date()
+      };
+      const docRef = await addDoc(collectionsRef, newDoc);
   
-    setCollections([...collections, newCollectionItem]);
-  
-    setNewCollection({ title: '', thesis: '' });
-    setIsOpen(false);
-    
-    // Navigate to library with the thesis for searching
-    const encodedThesis = encodeURIComponent(newCollection.thesis || newCollection.title);
-    router.push(`/library?thesis=${encodedThesis}&newCollection=true`);
+      setNewCollection({ title: '', thesis: '' });
+      setIsOpen(false);
+      
+      // Navigate to library/search with the thesis for searching and collection ID
+      const searchTerm = newCollection.thesis || newCollection.title;
+      const encodedThesis = encodeURIComponent(searchTerm);
+      router.push(`/library?thesis=${encodedThesis}&newCollection=true&collectionId=${docRef.id}`);
+    } catch (error) {
+      console.error("Error adding collection: ", error);
+      // You might want to add error handling UI here
+    }
   };
 
   const handleDeleteClick = (collection: Collection) => {
@@ -72,22 +88,29 @@ export default function DashboardPage() {
     setDeleteDialogOpen(true);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (collectionToDelete) {
-      setCollections(collections.filter(collection => collection.id !== collectionToDelete.id));
-      setDeleteDialogOpen(false);
-      setCollectionToDelete(null);
+      try {
+        await deleteDoc(doc(db, 'collections', collectionToDelete.id));
+        setDeleteDialogOpen(false);
+        setCollectionToDelete(null);
+      } catch (error) {
+        console.error("Error deleting collection: ", error);
+        // Add error handling UI here
+      }
     }
   };
 
   const handleCollectionClick = (collection: Collection) => {
-    // For existing collections, we'll show their contents
     router.push(`/collection/${collection.id}`);
   };
 
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Main Content */}
       <main className="px-8 py-6">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
@@ -192,48 +215,55 @@ export default function DashboardPage() {
 
         {/* Collections Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {collections.map((collection) => (
-            <div 
-              key={collection.id}
-              className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow group cursor-pointer"
-              onClick={() => handleCollectionClick(collection)}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="text-lg font-medium text-gray-900">{collection.name}</h3>
-                  <span className="text-sm text-gray-500">{collection.papersCount} papers</span>
-                </div>
-                <button
-                  onClick={() => handleDeleteClick(collection)}
-                  className="text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                >
-                  <svg 
-                    className="w-5 h-5" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
+          {loading ? (
+            <div>Loading...</div>
+          ) : (
+            collections.map((collection) => (
+              <div 
+                key={collection.id}
+                className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow group cursor-pointer"
+                onClick={() => handleCollectionClick(collection)}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-medium text-gray-900">{collection.name}</h3>
+                    <span className="text-sm text-gray-500">{collection.papersCount} papers</span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteClick(collection);
+                    }}
+                    className="text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                   >
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth="2" 
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
-                    />
-                  </svg>
-                </button>
+                    <svg 
+                      className="w-5 h-5" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth="2" 
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
+                      />
+                    </svg>
+                  </button>
+                </div>
+                {collection.thesis && (
+                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">{collection.thesis}</p>
+                )}
+                <div className="text-sm text-gray-500">
+                  Last updated {new Date(collection.lastUpdated).toLocaleDateString()}
+                </div>
               </div>
-              {collection.thesis && (
-                <p className="text-sm text-gray-600 mb-3 line-clamp-2">{collection.thesis}</p>
-              )}
-              <div className="text-sm text-gray-500">
-                Last updated {new Date(collection.lastUpdated).toLocaleDateString()}
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
         {/* Empty State */}
-        {collections.length === 0 && (
+        {!loading && collections.length === 0 && (
           <div className="flex flex-col items-center justify-center h-96">
             <div className="bg-gray-100 rounded-full p-4 mb-4">
               <svg 

@@ -5,7 +5,8 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "./../components/ui/button";
 import { Checkbox } from "./../components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast"
-import { url } from 'inspector';
+import { db } from '@/lib/firebase';
+import { doc, updateDoc, increment, arrayUnion } from 'firebase/firestore';
 
 interface Paper {
   id: string;
@@ -16,6 +17,15 @@ interface Paper {
   year: number;
   pdfUrl?: string;
   selected?: boolean;
+}
+
+interface SavedPaper {
+  paperId: string;
+  title: string;
+  authors: { id: string; name: string }[];
+  url: string;
+  pdfUrl?: string;
+  addedAt: Date;
 }
 
 export default function LibraryPage() {
@@ -31,6 +41,7 @@ export default function LibraryPage() {
 
   const thesis = searchParams.get('thesis');
   const isNewCollection = searchParams.get('newCollection') === 'true';
+  const collectionId = searchParams.get('collectionId');
 
   const searchPapers = async (searchQuery: string) => {
     console.log('Starting paper search with query:', searchQuery);
@@ -76,12 +87,12 @@ export default function LibraryPage() {
 
       // Transform API results to our Paper interface
       const results: Paper[] = data.papers.map((paper: any) => ({
-        id: paper.paperId, // Use paperId as the unique identifier
-        authors: paper.authors || [], // Ensure authors array exists
+        id: paper.paperId,
+        authors: paper.authors || [],
         url: paper.url,
-        type: 'Paper', 
+        type: 'Paper',
         title: paper.title,
-        year: new Date().getFullYear(), // Default to current year
+        year: paper.year || new Date().getFullYear(),
         pdfUrl: paper.pdfUrl
       }));
 
@@ -125,6 +136,15 @@ export default function LibraryPage() {
   };
 
   const handleSaveToCollection = async () => {
+    if (!collectionId) {
+      toast({
+        title: "Error",
+        description: "No collection ID found",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // Filter selected papers with PDF URLs
     const selectedPapersWithPdf = searchResults.filter(paper => 
       selectedPapers.has(paper.id) && paper.pdfUrl
@@ -134,105 +154,103 @@ export default function LibraryPage() {
       toast({
         title: "No PDFs to upload",
         description: "No selected papers have PDF URLs to upload",
+        variant: "destructive"
       });
       return;
     }
 
     setUploadLoading(true);
-    const uploadPromises = selectedPapersWithPdf.map(async (paper) => {
-      try {
-        // Fetch the PDF URL to get the file
-        const response = await fetch(paper.pdfUrl!);
-        const blob = await response.blob();
-
-        // Create FormData to send the PDF
-        const formData = new FormData();
-        formData.append('pdf', blob, `${paper.id}_${paper.title.slice(0, 50)}.pdf`);
-
-        // Send to upload API
-        const uploadResponse = await fetch('http://127.0.0.1:5000/upload_pdf', {
-          method: 'POST',
-          body: formData
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error(`Failed to upload PDF for paper: ${paper.title}`);
-        }
-
-        return { 
-          id: paper.id, 
-          title: paper.title, 
-          status: 'success' 
-        };
-      } catch (error) {
-        console.error(`Error uploading PDF for paper ${paper.title}:`, error);
-        return { 
-          id: paper.id, 
-          title: paper.title, 
-          status: 'error' 
-        };
-      }
-    });
 
     try {
+      // First upload PDFs to your backend server
+      const uploadPromises = selectedPapersWithPdf.map(async (paper) => {
+        try {
+          // Fetch the PDF URL to get the file
+          const response = await fetch(paper.pdfUrl!);
+          const blob = await response.blob();
+
+          // Create FormData to send the PDF
+          const formData = new FormData();
+          formData.append('pdf', blob, `${paper.id}_${paper.title.slice(0, 50)}.pdf`);
+
+          // Send to upload API
+          const uploadResponse = await fetch('http://127.0.0.1:5000/upload_pdf', {
+            method: 'POST',
+            body: formData
+          });
+
+          if (!uploadResponse.ok) {
+            throw new Error(`Failed to upload PDF for paper: ${paper.title}`);
+          }
+
+          return { 
+            id: paper.id,
+            status: 'success',
+            paper: paper
+          };
+        } catch (error) {
+          console.error(`Error uploading PDF for paper ${paper.title}:`, error);
+          return { 
+            id: paper.id,
+            status: 'error',
+            paper: paper
+          };
+        }
+      });
+
       const uploadResults = await Promise.all(uploadPromises);
+      const successfulUploads = uploadResults.filter(r => r.status === 'success');
 
-      // Process upload results
-      const successCount = uploadResults.filter(r => r.status === 'success').length;
-      const errorCount = uploadResults.filter(r => r.status === 'error').length;
+      if (successfulUploads.length > 0) {
+        // Update Firestore collection with the successfully uploaded papers
+        const collectionRef = doc(db, 'collections', collectionId);
+        
+        // Prepare papers data for Firestore
+        const papersToAdd: SavedPaper[] = successfulUploads.map(result => ({
+          paperId: result.paper.id,
+          title: result.paper.title,
+          authors: result.paper.authors,
+          url: result.paper.url,
+          pdfUrl: result.paper.pdfUrl,
+          addedAt: new Date()
+        }));
 
-      // Show toast notifications
-      if (successCount > 0) {
+        // Update the collection document
+        await updateDoc(collectionRef, {
+          papers: arrayUnion(...papersToAdd),
+          papersCount: increment(successfulUploads.length),
+          lastUpdated: new Date()
+        });
+
         toast({
-          title: "Upload Successful",
-          description: `Successfully uploaded ${successCount} PDF(s)`,
+          title: "Success",
+          description: `Added ${successfulUploads.length} papers to your collection`,
           variant: "default"
         });
-      }
 
-      if (errorCount > 0) {
+        // Clear selection
+        setSelectedPapers(new Set());
+
+        // Redirect to the collection page
+        router.push(`/collection/${collectionId}`);
+      } else {
         toast({
-          title: "Upload Partial Failure",
-          description: `Failed to upload ${errorCount} PDF(s)`,
+          title: "Upload Failed",
+          description: "Failed to upload any papers",
           variant: "destructive"
         });
       }
-
-      // Optionally, clear selection after upload
-      setSelectedPapers(new Set());
     } catch (error) {
-      console.error('Comprehensive upload error:', error);
+      console.error('Error saving to collection:', error);
       toast({
-        title: "Upload Failed",
-        description: "An error occurred while uploading PDFs",
+        title: "Error",
+        description: "Failed to save papers to collection",
         variant: "destructive"
       });
     } finally {
       setUploadLoading(false);
     }
   };
-
-  // Modify the Button for saving to collection to show loading state
-  const SaveToCollectionButton = (
-    <Button 
-      className="bg-blue-500 hover:bg-blue-600 text-white flex items-center space-x-2"
-      onClick={handleSaveToCollection}
-      disabled={selectedPapers.size === 0 || uploadLoading}
-    >
-      {uploadLoading ? (
-        <svg className="animate-spin h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-      ) : (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      )}
-      <span>{uploadLoading ? 'Uploading...' : 'Save to Collection'}</span>
-    </Button>
-  );
-
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
