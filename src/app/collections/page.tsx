@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from "./../components/ui/button";
 import { Checkbox } from "./../components/ui/checkbox";
 import { Input } from "./../components/ui/input";
+import { searchPapers } from './search-api'; // Import the mock search API
 
-interface Paper {
+export interface Paper {
   id: number;
   author: string;
   type: 'Paper' | 'Article';
@@ -18,31 +19,44 @@ interface Paper {
 export default function CollectionsPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Paper[]>([
-    { id: 1, author: "Jullu Jalal", type: "Paper", title: "The health consequences of smoking: a report of Surgeon General", year: 2019 },
-    { id: 2, author: "Minerva Barnett", type: "Article", title: "Systemic effects of smoking", year: 2007 },
-    { id: 3, author: "Peter Lewis", type: "Paper", title: "Smoking and gender", year: 2012 },
-    { id: 4, author: "Anthony Briggs", type: "Article", title: "Uncovering the effects of smoking: historical perspective", year: 2019 },
-    { id: 5, author: "Clifford Morgan", type: "Article", title: "Smoking and passive smoking in Chinese, 2002", year: 2011 },
-    { id: 6, author: "Cecilia Webster", type: "Paper", title: "Mortality from smoking worldwide", year: 2010 },
-    { id: 7, author: "Harvey Manning", type: "Paper", title: "The economics of smoking", year: 2024 },
-    { id: 8, author: "Willie Blake", type: "Article", title: "Smoking, smoking cessation, and major depression", year: 2022 },
-    { id: 9, author: "Minerva Barnett", type: "Paper", title: "Smoking and reproduction", year: 2023 }
-  ]);
+  const [searchResults, setSearchResults] = useState<Paper[]>([]);
   const [selectedPapers, setSelectedPapers] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [lastSubmittedQuery, setLastSubmittedQuery] = useState('');
+
+  // Initial search when component loads
+  useEffect(() => {
+    const initialSearch = async () => {
+      setLoading(true);
+      try {
+        const results = await searchPapers('');
+        setSearchResults(results);
+      } catch (error) {
+        console.error('Initial search error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initialSearch();
+  }, []);
 
   const handleSearch = async (query: string) => {
     setLoading(true);
     try {
-      // In a real application, this would be an API call
-      // For now, we'll just filter the mock data
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
-      // Actual search logic would go here
+      const results = await searchPapers(query);
+      setSearchResults(results);
+      setLastSubmittedQuery(query);
     } catch (error) {
       console.error('Search error:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch(searchQuery);
     }
   };
 
@@ -80,11 +94,14 @@ export default function CollectionsPage() {
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
-                handleSearch(e.target.value);
               }}
-              className="flex-1 border-none focus:ring-0 text-base"
+              onKeyDown={handleKeyDown}
+              className="flex-1 border-none focus:ring-0 text-base text-gray-900"
             />
-            <Button className="bg-blue-500 hover:bg-blue-600 text-white rounded-full">
+            <Button 
+              onClick={() => handleSearch(searchQuery)}
+              className="bg-blue-500 hover:bg-blue-600 text-white rounded-full"
+            >
               Search
             </Button>
           </div>
@@ -92,7 +109,9 @@ export default function CollectionsPage() {
 
         {/* Results Title */}
         <h1 className="text-2xl font-semibold text-black text-center mb-8">
-          Results for "Smoking"
+          {lastSubmittedQuery 
+            ? `Results for "${lastSubmittedQuery}"` 
+            : 'Search Papers and Articles'}
         </h1>
 
         {/* Results List */}
@@ -100,6 +119,12 @@ export default function CollectionsPage() {
           {loading ? (
             <div className="flex justify-center items-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            </div>
+          ) : searchResults.length === 0 ? (
+            <div className="flex justify-center items-center h-32 text-gray-500">
+              {lastSubmittedQuery 
+                ? 'No results found' 
+                : 'Enter a search term to find papers'}
             </div>
           ) : (
             searchResults.map((paper) => (
