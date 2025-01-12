@@ -83,6 +83,23 @@ export const firebaseOperations = {
     }
   },
 
+  getPapersForCollection: async (collectionId: string): Promise<Paper[]> => {
+    try {
+      const collectionRef = doc(db, 'collections', collectionId);
+      const collectionDoc = await getDoc(collectionRef);
+  
+      if (!collectionDoc.exists()) {
+        throw new Error('Collection not found');
+      }
+  
+      const collectionData = collectionDoc.data() as Collection;
+      return collectionData.papers || [];
+    } catch (error) {
+      console.error('Error getting papers for collection:', error);
+      throw error;
+    }
+  },
+
   // Create a new collection
   createCollection: async (collectionData: Omit<CollectionData, 'papers' | 'lastUpdated'>): Promise<Collection> => {
     try {
@@ -135,4 +152,5 @@ export const firebaseOperations = {
       throw error;
     }
   }
+  
 };

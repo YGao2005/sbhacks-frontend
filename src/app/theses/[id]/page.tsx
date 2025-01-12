@@ -23,7 +23,6 @@ export default function CollectionPage({
           setCollection(collectionData);
         } else {
           console.log("No such collection!");
-          // Optionally redirect to 404 or dashboard
           router.push('/dashboard');
         }
       } catch (error) {
@@ -53,7 +52,6 @@ export default function CollectionPage({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
       <div className="mb-8">
         <div className="flex items-center justify-between">
           <div>
@@ -85,7 +83,7 @@ export default function CollectionPage({
             </p>
           </div>
           <div className="flex items-center space-x-4">
-          <Button onClick={() => router.push('/collections')}>
+            <Button onClick={() => router.push('/collections')}>
               <svg 
                 className="w-5 h-5 mr-2" 
                 fill="none" 
@@ -101,6 +99,22 @@ export default function CollectionPage({
               </svg>
               Add Paper
             </Button>
+            <Button onClick={() => router.push(`/citations/${resolvedParams.id}`)}>
+              <svg 
+                className="w-5 h-5 mr-2" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth="2" 
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" 
+                />
+              </svg>
+              Citations
+            </Button>
           </div>
         </div>
         {collection.thesis && (
@@ -111,7 +125,6 @@ export default function CollectionPage({
         )}
       </div>
 
-      {/* Papers Grid */}
       <div className="mt-8">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Papers ({collection.papersCount})</h2>
         
