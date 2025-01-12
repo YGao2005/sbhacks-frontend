@@ -13,7 +13,9 @@ import {
   DialogDescription,
 } from "./../components/ui/dialog";
 import { firebaseOperations } from "@/lib/firebase";
+import { EmptyState } from "./../components/EmptyState";
 import { motion, AnimatePresence } from "framer-motion";
+import { AnimatedBackground } from "./../components/AnimatedBackground";
 
 export interface Paper {
   paperId: string; // Changed from id: number
@@ -299,7 +301,9 @@ export default function CollectionsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="relative min-h-screen z-8 p-8">
+    <AnimatedBackground />
+    <div className="relative z-96 min-h-screen p-8">
       <div className="max-w-4xl mx-auto">
         {/* Search Bar */}
         <div className="relative mb-8">
@@ -335,13 +339,18 @@ export default function CollectionsPage() {
             </Button>
           </div>
         </div>
+        {/* Show empty state when no search has been performed */}
+        {!lastSubmittedQuery && searchResults.length === 0 && !loading && (
+            <EmptyState onSampleSearch={handleSearch} />
+          )}
+
 
         {/* Results Title */}
-        <h1 className="text-2xl font-semibold text-black text-center mb-8">
-          {lastSubmittedQuery
-            ? `Results for "${lastSubmittedQuery}"`
-            : "Search More Papers and Articles"}
-        </h1>
+        {lastSubmittedQuery && (
+            <h1 className="text-2xl font-semibold text-black text-center mb-8">
+              Results for "{lastSubmittedQuery}"
+            </h1>
+          )}
 
         {/* Results List */}
         <AnimatePresence>
@@ -588,5 +597,6 @@ export default function CollectionsPage() {
         </Dialog>
       </div>
     </div>
+  </div>
   );
 }
