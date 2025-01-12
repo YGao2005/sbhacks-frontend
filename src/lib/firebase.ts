@@ -37,6 +37,14 @@ export interface Collection {
   papers: Paper[];
 }
 
+export interface Message {
+  id: string;
+  content: string;
+  timestamp: string;
+  isUser: boolean;
+  paperId: string;
+}
+
 // Define the type for collection data without ID
 export type CollectionData = Omit<Collection, 'id'>;
 
@@ -70,6 +78,43 @@ export const firebaseOperations = {
       return [];
     }
   },
+
+  getMessages: async (collectionId: string, paperId: string): Promise<Message[]> => {
+    try {
+      const messagesRef = collection(db, 'collections', collectionId, 'messages');
+      const snapshot = await getDocs(messagesRef);
+      const allMessages = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Message[];
+      
+      // Filter messages for specific paper
+      return allMessages.filter(message => message.paperId === paperId);
+    } catch (error) {
+      console.error('Error getting messages:', error);
+      return [];
+    }
+  },
+
+  // Create a new message
+  createMessage: async (collectionId: string, message: Omit<Message, 'id'>): Promise<Message> => {
+    try {
+      const messagesRef = collection(db, 'collections', collectionId, 'messages');
+      const docRef = await addDoc(messagesRef, {
+        ...message,
+        timestamp: new Date().toISOString()
+      });
+      
+      return {
+        id: docRef.id,
+        ...message
+      };
+    } catch (error) {
+      console.error('Error creating message:', error);
+      throw error;
+    }
+  },
+
 
   // Get a single collection by ID
   getCollection: async (collectionId: string): Promise<Collection | null> => {
@@ -180,6 +225,23 @@ export const firebaseOperations = {
       await deleteDoc(doc(db, 'collections', collectionId));
     } catch (error) {
       console.error('Error deleting collection:', error);
+      throw error;
+    }
+  },
+  getPaperById: async (paperId: string): Promise<Paper | null> => {
+    try {
+      const collectionRef = collection(db, 'papers');
+      const paperDoc = await getDoc(doc(collectionRef, paperId));
+      
+      if (paperDoc.exists()) {
+        return {
+          paperId: paperDoc.id,
+          ...paperDoc.data()
+        } as Paper;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting paper:', error);
       throw error;
     }
   }
