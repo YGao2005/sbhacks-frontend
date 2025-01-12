@@ -84,13 +84,21 @@ export default function CollectionsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [currentOffset, setCurrentOffset] = useState(0);
 
+  // In your CollectionsPage component
+
+  // Add this state to track all loaded paper IDs
+  const [loadedPaperIds, setLoadedPaperIds] = useState<Set<string>>(new Set());
+
+  // Update handleSearch to reset the loaded papers tracking
   const handleSearch = async (query: string) => {
     setLoading(true);
     try {
-      const { papers } = await searchPapers(query, 3, 0);
+      const { papers } = await searchPapers(query, 8, 0, []);
       setSearchResults(papers);
       setLastSubmittedQuery(query);
       setCurrentOffset(papers.length);
+      // Reset and initialize loaded paper IDs
+      setLoadedPaperIds(new Set(papers.map((paper) => paper.paperId)));
     } catch (error) {
       console.error("Search error:", error);
     } finally {
@@ -98,6 +106,7 @@ export default function CollectionsPage() {
     }
   };
 
+  // Update handleLoadMore to use the tracked paper IDs
   const handleLoadMore = async () => {
     if (loadingMore) return;
 
@@ -105,8 +114,8 @@ export default function CollectionsPage() {
     try {
       const query = lastSubmittedQuery || "academic research";
 
-      // Get currently loaded paper IDs to exclude
-      const excludedPaperIds = searchResults.map((paper) => paper.paperId);
+      // Use the tracked paper IDs for exclusion
+      const excludedPaperIds = Array.from(loadedPaperIds);
 
       const { papers } = await searchPapers(
         query,
@@ -118,6 +127,12 @@ export default function CollectionsPage() {
       if (papers.length > 0) {
         setSearchResults((prev) => [...prev, ...papers]);
         setCurrentOffset((prev) => prev + papers.length);
+        // Update the set of loaded paper IDs
+        setLoadedPaperIds((prev) => {
+          const newSet = new Set(prev);
+          papers.forEach((paper) => newSet.add(paper.paperId));
+          return newSet;
+        });
       }
     } catch (error) {
       console.error("Load more error:", error);
@@ -193,6 +208,21 @@ export default function CollectionsPage() {
   const openCollectionModal = () => {
     fetchUserCollections();
     setIsCollectionModalOpen(true);
+  };
+
+  const getTypeStyle = (type: string): string => {
+    const styleMap: { [key: string]: string } = {
+      Article: "bg-blue-100 text-blue-800",
+      "Book Chapter": "bg-purple-100 text-purple-800",
+      Dataset: "bg-green-100 text-green-800",
+      Preprint: "bg-yellow-100 text-yellow-800",
+      Dissertation: "bg-red-100 text-red-800",
+      Book: "bg-indigo-100 text-indigo-800",
+      Review: "bg-pink-100 text-pink-800",
+      // Add more styles for other types as needed
+      Other: "bg-gray-100 text-gray-800",
+    };
+    return styleMap[type] || styleMap["Other"];
   };
 
   return (
@@ -306,9 +336,14 @@ export default function CollectionsPage() {
                       <span className="text-sm font-medium">
                         {paper.authors.map((author) => author.name).join(", ")}
                       </span>
-                      <span className="ml-3 px-2 py-1 text-xs rounded bg-green-100 text-green-800">
-                        Paper
+                      <span className={`ml-3 px-2 py-1 text-xs rounded ${getTypeStyle(paper.type)}`}>
+                        {paper.type}
                       </span>
+                      {paper.year && (
+                        <span className="ml-3 text-sm text-gray-500">
+                          {paper.year}
+                        </span>
+                      )}
                     </div>
                     <h3 className="text-gray-900">{paper.title}</h3>
                     <div className="text-sm text-gray-500 mt-1">
@@ -318,7 +353,7 @@ export default function CollectionsPage() {
                         rel="noopener noreferrer"
                         className="hover:underline"
                       >
-                        View on Semantic Scholar
+                        View on OpenAlex
                       </a>
                       {paper.pdfUrl && (
                         <a

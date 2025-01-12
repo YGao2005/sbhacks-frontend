@@ -82,6 +82,9 @@ export default function LibraryPage() {
     searchQuery: string,
     concept: string
   ): Promise<SearchResultGroup> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10-second timeout
+
     try {
       const response = await fetch("/api/library", {
         method: "POST",
@@ -89,9 +92,16 @@ export default function LibraryPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ query: searchQuery }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeout);
+
       if (!response.ok) {
+        // Handle rate limiting specifically
+        if (response.status === 429) {
+          throw new Error("Rate limit exceeded. Please try again later.");
+        }
         throw new Error(`Error searching papers: ${response.statusText}`);
       }
 
@@ -111,7 +121,7 @@ export default function LibraryPage() {
         url: paper.url,
         type: "Paper",
         title: paper.title,
-        year: new Date().getFullYear(),
+        year: paper.year,
         pdfUrl: paper.pdfUrl,
       }));
 
@@ -121,8 +131,12 @@ export default function LibraryPage() {
         total: data.total || results.length,
       };
     } catch (error) {
-      console.error(`Search error for concept "${concept}":`, error);
+      if ((error as Error).name === "AbortError") {
+        throw new Error("Request timed out");
+      }
       throw error;
+    } finally {
+      clearTimeout(timeout);
     }
   };
 
@@ -135,34 +149,69 @@ export default function LibraryPage() {
     try {
       // Get semantic parts
       const concepts = await getSemanticParts(mainQuery);
-      const results: SearchResultGroup[] = [];
+      let successfulSearches = 0;
+      const maxRetries = 3; // Maximum number of retries per concept
+      const minSuccessfulResults = 2; // Minimum number of successful results needed
 
-      // Process each concept sequentially with delays
-      for (const concept of concepts) {
-        try {
-          // Add a delay before each search (except the first one)
-          if (results.length > 0) {
-            await delay(1000); // 1 second delay between searches
+      // Process concepts in parallel with retries
+      const searchPromises = concepts.map(async (concept) => {
+        let retryCount = 0;
+        let result: SearchResultGroup | null = null;
+
+        while (retryCount < maxRetries && !result) {
+          try {
+            if (retryCount > 0) {
+              // Add exponential backoff delay for retries
+              await delay(1000 * Math.pow(2, retryCount));
+            }
+
+            result = await searchPapers(concept, concept);
+
+            if (result.papers.length > 0) {
+              successfulSearches++;
+              // Update UI immediately when we get a successful result
+              setSearchResults((prev) => [...prev, result!]);
+            }
+          } catch (error) {
+            console.error(
+              `Attempt ${retryCount + 1} failed for concept "${concept}":`,
+              error
+            );
+            retryCount++;
+
+            // If it's the last retry, return an empty result
+            if (retryCount === maxRetries) {
+              result = {
+                concept,
+                papers: [],
+                total: 0,
+              };
+            }
           }
-
-          const result = await searchPapers(concept, concept);
-          results.push(result);
-
-          // Update the UI incrementally as results come in
-          setSearchResults([...results]);
-        } catch (error) {
-          console.error(`Error searching for concept "${concept}":`, error);
-          // Continue with other concepts even if one fails
-          results.push({
-            concept,
-            papers: [],
-            total: 0,
-          });
         }
-      }
 
-      // Final update of results (though this might be redundant)
-      setSearchResults(results);
+        return result;
+      });
+
+      // Wait for all searches to complete or until we have enough results
+      const results = await Promise.all(searchPromises);
+
+      // Filter out null results and sort by number of papers
+      const validResults = results
+        .filter((r): r is SearchResultGroup => r !== null)
+        .sort((a, b) => b.papers.length - a.papers.length);
+
+      // Update the final results
+      setSearchResults(validResults);
+
+      // Show warning if we didn't get enough results
+      if (successfulSearches < minSuccessfulResults) {
+        toast({
+          title: "Limited Results",
+          description: "Some results couldn't be loaded. Try again later.",
+          variant: "default",
+        });
+      }
     } catch (error) {
       console.error("Comprehensive search error:", error);
       setError(
@@ -334,6 +383,62 @@ export default function LibraryPage() {
     </Button>
   );
 
+  const TypeBadge: React.FC<{ type: string }> = ({ type }) => {
+    const getTypeStyle = (type: string) => {
+      const styles = {
+        article: {
+          background: "bg-blue-100",
+          text: "text-blue-800",
+        },
+        libguides: {
+          background: "bg-purple-100",
+          text: "text-purple-800",
+        },
+        dataset: {
+          background: "bg-green-100",
+          text: "text-green-800",
+        },
+        preprint: {
+          background: "bg-yellow-100",
+          text: "text-yellow-800",
+        },
+        dissertation: {
+          background: "bg-red-100",
+          text: "text-red-800",
+        },
+        book: {
+          background: "bg-indigo-100",
+          text: "text-indigo-800",
+        },
+        review: {
+          background: "bg-pink-100",
+          text: "text-pink-800",
+        },
+        other: {
+          background: "bg-gray-100",
+          text: "text-gray-800",
+        },
+      };
+
+      const normalizedType = type.toLowerCase();
+      const style =
+        styles[normalizedType as keyof typeof styles] || styles.other;
+
+      return `${style.background} ${style.text}`;
+    };
+
+    return (
+      <span
+        className={`px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100
+          text-blue-800 ${getTypeStyle(
+          type
+        )}`}
+      >
+        {type}
+      </span>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-4xl mx-auto">
@@ -394,64 +499,93 @@ export default function LibraryPage() {
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                           transition={{ duration: 0.2 }}
-                          className={`flex items-center p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors duration-200 ${
-                            selectedPapers.has(paper.id) ? "bg-blue-50" : ""
-                          }`}
+                          className="p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors duration-200"
                         >
-                          <div
-                            key={paper.id}
-                            className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
-                          >
+                          <div className="flex items-start space-x-4">
                             <Checkbox
                               checked={selectedPapers.has(paper.id)}
                               onCheckedChange={() =>
                                 togglePaperSelection(paper.id)
                               }
-                              className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
+                              className="mt-1 h-4 w-4 text-blue-500 rounded border-gray-300"
                             />
-                            <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
-                              <svg
-                                className="w-5 h-5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M9 5l7 7-7 7"
-                                />
-                              </svg>
-                            </div>
+
                             <div className="flex-1">
-                              <div className="flex items-center mb-1">
-                                <span className="text-sm font-medium text-gray-500">
+                              {/* Title */}
+                              <h3 className="text-lg font-medium text-gray-900 mb-1">
+                                {paper.title}
+                              </h3>
+
+                              {/* Meta information */}
+                              <div className="flex items-center space-x-3 mb-2">
+                                {/* Authors */}
+                                <span className="text-sm text-gray-600">
                                   {paper.authors.length > 0
                                     ? paper.authors
                                         .map((author) => author.name)
                                         .join(", ")
                                     : "Unknown Author"}
                                 </span>
-                                <span className="ml-3 px-2 py-1 text-xs rounded bg-green-100 text-green-800">
-                                  {paper.type}
+
+                                {/* Year */}
+                                <span className="text-sm text-gray-500">
+                                  ({paper.year})
                                 </span>
+
+                                {/* Type Badge */}
+                                <TypeBadge type={paper.type} />
                               </div>
-                              <h3 className="text-gray-900">{paper.title}</h3>
-                              {paper.url && (
-                                <a
-                                  href={paper.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-500 text-sm hover:underline"
-                                >
-                                  Open paper
-                                </a>
-                              )}
+
+                              {/* Links */}
+                              <div className="flex items-center space-x-4">
+                                {paper.url && (
+                                  <a
+                                    href={paper.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+                                  >
+                                    <svg
+                                      className="w-4 h-4 mr-1"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth="2"
+                                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                                      />
+                                    </svg>
+                                    View paper
+                                  </a>
+                                )}
+                                {paper.pdfUrl && (
+                                  <a
+                                    href={paper.pdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+                                  >
+                                    <svg
+                                      className="w-4 h-4 mr-1"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth="2"
+                                        d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                      />
+                                    </svg>
+                                    PDF
+                                  </a>
+                                )}
+                              </div>
                             </div>
-                            <span className="text-sm text-gray-500">
-                              {paper.year}
-                            </span>
                           </div>
                         </motion.div>
                       ))
