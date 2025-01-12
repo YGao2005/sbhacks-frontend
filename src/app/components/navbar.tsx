@@ -15,7 +15,6 @@ const Navbar = () => {
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', isActive: pathname === '/dashboard' },
     { label: 'Library', path: '/library', isActive: isLibraryActive },
-    { label: 'Citations', path: '/citations', isActive: pathname === '/citations' },
   ];
 
   return (
