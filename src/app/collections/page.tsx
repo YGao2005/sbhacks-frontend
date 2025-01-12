@@ -159,6 +159,17 @@ export default function CollectionsPage() {
     }
   };
 
+  const handleAnalyzeClick = (paper: Paper) => {
+    if (paper.pdfUrl) {
+      const encodedUrl = encodeURIComponent(paper.pdfUrl);
+      router.push(`/pdf-analysis?url=${encodedUrl}`);
+    } else {
+      // Handle case where PDF URL is not available
+      console.log("No PDF URL available for analysis");
+      // Optionally show a toast or alert to the user
+    }
+  };
+
   const handleSaveToCollection = async (collectionId: string) => {
     try {
       const selectedPapersArray = Array.from(selectedPapers);
@@ -254,21 +265,42 @@ export default function CollectionsPage() {
                     onCheckedChange={() => togglePaperSelection(paper.paperId)}
                     className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
                   />
-                  <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                  </div>
+                  <button
+                    onClick={() => handleAnalyzeClick(paper)}
+                    disabled={!paper.pdfUrl}
+                    className={`
+    w-10 h-10 rounded-full flex items-center justify-center mr-4
+    transition-all duration-200
+    ${
+      paper.pdfUrl
+        ? "bg-blue-500 hover:bg-blue-600 text-white"
+        : "bg-gray-200 cursor-not-allowed text-gray-400"
+    }
+  `}
+                    title={
+                      paper.pdfUrl
+                        ? "Analyze Paper"
+                        : "No PDF available for analysis"
+                    }
+                  >
+                    {loading ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    )}
+                  </button>
                   <div className="flex-1">
                     <div className="flex items-center mb-1">
                       <span className="text-sm font-medium">
