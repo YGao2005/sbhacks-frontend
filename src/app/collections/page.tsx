@@ -1,11 +1,12 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "./../components/ui/button";
-import { Checkbox } from "./../components/ui/checkbox";
 import { Input } from "./../components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 
+// Simplified interfaces
 interface Author {
   id: string;
   name: string;
@@ -17,220 +18,128 @@ interface Paper {
   url: string;
   pdfUrl: string;
   authors: Author[];
-  type: 'Paper' | 'Article';
+  type: "Paper" | "Article";
   year: number;
-  selected?: boolean;
+  selected: boolean;
 }
-
-interface SearchResponse {
-  total: number;
-  papers: Paper[];
-  hasMore: boolean;
-  nextOffset: number;
-  currentLimit: number;
-  currentOffset: number;
-}
-
-const MIN_INITIAL_PAPERS = 6;  // Minimum papers for initial load
-const MIN_LOAD_MORE_PAPERS = 4;  // Minimum papers for each load more
-const MAX_RETRIES = 3;  // Maximum number of retry attempts
-const LIMIT = 10;
-
 
 export default function CollectionsPage() {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Paper[]>([]);
-  const [selectedPapers, setSelectedPapers] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [lastSubmittedQuery, setLastSubmittedQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [currentOffset, setCurrentOffset] = useState(0);
   const [total, setTotal] = useState(0);
+  const [selectAll, setSelectAll] = useState(false);
 
-  const LIMIT = 10;
-
-  // Initial load - now empty until search
-  useEffect(() => {
-    setSearchResults([]);
-  }, []);
-
-  const searchPapersWithRetry = async (
-    query: string,
-    offset: number = 0,
-    minPapers: number,
-    retryCount: number = 0
-  ): Promise<SearchResponse> => {
+  const searchPapers = async (query: string, offset: number = 0) => {
     try {
-      const response = await fetch('/api/library', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          query,
-          offset,
-          limit: LIMIT
-        }),
+      const response = await fetch("/api/library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, offset, limit: 10 }),
       });
-  
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to search papers');
+        throw new Error("Failed to search papers");
       }
-  
-      const data: SearchResponse = await response.json();
+
+      const data = await response.json();
       
-      // If we don't have enough papers and haven't exceeded retry limit, try to fetch more
-      if (data.papers.length < minPapers && data.hasMore && retryCount < MAX_RETRIES) {
-        // Wait a short time before retrying to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
-        
-        const additionalData = await searchPapersWithRetry(
-          query,
-          offset + data.papers.length,
-          minPapers - data.papers.length,
-          retryCount + 1
-        );
-  
-        return {
-          papers: [...data.papers, ...additionalData.papers],
-          total: Math.max(data.total, data.papers.length + additionalData.papers.length),
-          hasMore: additionalData.hasMore,
-          nextOffset: additionalData.nextOffset,
-          currentLimit: LIMIT,
-          currentOffset: offset
-        };
-      }
-  
-      return data;
+      // Initialize papers with selected state based on current selectAll value
+      return {
+        papers: data.papers.map((paper: any) => ({
+          ...paper,
+          type: "Paper" as const,
+          year: paper.year || new Date().getFullYear(),
+          selected: selectAll, // Initialize based on selectAll state
+        })),
+        hasMore: data.hasMore,
+        nextOffset: data.nextOffset,
+        total: data.total,
+      };
     } catch (error) {
-      if (retryCount < MAX_RETRIES) {
-        // Wait before retrying with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
-        return searchPapersWithRetry(query, offset, minPapers, retryCount + 1);
-      }
-      throw error;
+      throw error instanceof Error ? error : new Error("Failed to search papers");
     }
   };
 
-  useEffect(() => {
-    setSearchResults([]);
-  }, []);
 
-  const handleSearch = async (query: string) => {
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    
     setLoading(true);
     setError(null);
     try {
-      const data = await searchPapersWithRetry(query, 0, MIN_INITIAL_PAPERS);
-      
-      // Transform the papers data
-      const transformedPapers = data.papers.map(paper => ({
-        id: paper.id,
-        title: paper.title,
-        url: paper.url,
-        pdfUrl: paper.pdfUrl,
-        authors: paper.authors,
-        type: 'Paper' as const,
-        year: new Date().getFullYear(),
-        selected: false
-      }));
-
-      setSearchResults(transformedPapers);
+      const data = await searchPapers(searchQuery);
+      setSearchResults(data.papers);
       setHasMore(data.hasMore);
       setCurrentOffset(data.nextOffset);
       setTotal(data.total);
-      setLastSubmittedQuery(query);
     } catch (error) {
-      console.error('Search error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to search papers');
-      setSearchResults([]);
+      setError(error instanceof Error ? error.message : "Search failed");
     } finally {
       setLoading(false);
     }
   };
 
   const handleLoadMore = async () => {
-    if (!lastSubmittedQuery || loadingMore) return;
+    if (loadingMore || !hasMore) return;
     
     setLoadingMore(true);
-    setError(null);
     try {
-      const data = await searchPapersWithRetry(
-        lastSubmittedQuery,
-        currentOffset,
-        MIN_LOAD_MORE_PAPERS
-      );
-      
-      const transformedPapers = data.papers.map(paper => ({
-        id: paper.id,
-        title: paper.title,
-        url: paper.url,
-        pdfUrl: paper.pdfUrl,
-        authors: paper.authors,
-        type: 'Paper' as const,
-        year: new Date().getFullYear(),
-        selected: false
-      }));
-
-      setSearchResults(prev => [...prev, ...transformedPapers]);
+      const data = await searchPapers(searchQuery, currentOffset);
+      setSearchResults(prev => [...prev, ...data.papers]);
       setHasMore(data.hasMore);
       setCurrentOffset(data.nextOffset);
-      setTotal(data.total);
     } catch (error) {
-      console.error('Load more error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to load more papers');
+      setError(error instanceof Error ? error.message : "Failed to load more");
     } finally {
       setLoadingMore(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleSearch(searchQuery);
-    }
-  };
-
-  const togglePaperSelection = (paperId: string) => {
-    setSelectedPapers(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(paperId)) {
-        newSet.delete(paperId);
-      } else {
-        newSet.add(paperId);
-      }
-      return newSet;
+  const togglePaperSelection = (paperId: string, checked: boolean) => {
+    setSearchResults(prev => {
+      const newResults = prev.map(paper =>
+        paper.id === paperId ? { ...paper, selected: checked } : paper
+      );
+      
+      const allSelected = newResults.every(paper => paper.selected);
+      setSelectAll(allSelected);
+      
+      return newResults;
     });
   };
 
-  const handleJumpToChat = () => {
-    router.push('/chat');
+  const handleSelectAll = (checked: boolean) => {
+    setSelectAll(checked);
+    setSearchResults(prev =>
+      prev.map(paper => ({ ...paper, selected: checked }))
+    );
   };
+
+  const selectedCount = searchResults.filter(paper => paper.selected).length;
+  const allSelected = searchResults.length > 0 && selectedCount === searchResults.length;
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-4xl mx-auto">
         {/* Search Bar */}
-        <div className="relative mb-8">
+        <div className="mb-8">
           <div className="flex items-center bg-white rounded-full shadow-lg p-2">
-            <div className="flex items-center px-3 text-gray-400">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
             <Input
               type="text"
               placeholder="Search academic papers"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="flex-1 border-none focus:ring-0 text-base text-gray-900"
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              className="flex-1 border-none focus:ring-0"
             />
-            <Button 
-              onClick={() => handleSearch(searchQuery)}
+            <Button
+              onClick={handleSearch}
               className="bg-blue-500 hover:bg-blue-600 text-white rounded-full"
             >
               Search
@@ -238,13 +147,24 @@ export default function CollectionsPage() {
           </div>
         </div>
 
-        {/* Results Title */}
-        <h1 className="text-2xl font-semibold text-black text-center mb-8">
-          {lastSubmittedQuery 
-            ? `Results for "${lastSubmittedQuery}" (${total} papers found)` 
-            : 'Search Academic Papers'}
-        </h1>
-
+        
+        {/* Results Header */}
+        {searchResults.length > 0 && (
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-2xl font-semibold">
+              Results for "{searchQuery}" ({total} papers)
+            </h1>
+            <div className="flex items-center space-x-2">
+            <Checkbox
+                checked={allSelected}
+                onCheckedChange={handleSelectAll}
+                id="select-all"
+              />
+              <span className="text-sm text-gray-600">Select All</span>
+            </div>
+          </div>
+        )}
+        
         {/* Error Message */}
         {error && (
           <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6">
@@ -256,37 +176,30 @@ export default function CollectionsPage() {
         <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
           {loading ? (
             <div className="flex justify-center items-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
             </div>
           ) : searchResults.length === 0 ? (
             <div className="flex justify-center items-center h-32 text-gray-500">
-              {lastSubmittedQuery 
-                ? 'No papers found with PDF access' 
-                : 'Enter a search term to find papers'}
+              {searchQuery ? "No papers found" : "Enter a search term"}
             </div>
           ) : (
             <>
               {searchResults.map((paper) => (
                 <div 
-                  key={paper.id}
-                  className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
+                  key={paper.id} 
+                  className="flex items-center p-4 border-b hover:bg-gray-50 transition-colors duration-200"
                 >
-                  <Checkbox
-                    checked={selectedPapers.has(paper.id)}
-                    onCheckedChange={() => togglePaperSelection(paper.id)}
-                    className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
-                  />
-                  <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
+                  <div className="mr-4">
+                    <Checkbox
+                      checked={paper.selected}
+                      onCheckedChange={(checked) => togglePaperSelection(paper.id, checked as boolean)}
+                      id={`paper-${paper.id}`}
+                    />
+                </div>
                   <div className="flex-1">
                     <div className="flex items-center mb-1">
-                      <span className="text-sm font-medium text-gray-500">
-                        {paper.authors.length > 0 
-                          ? paper.authors.map(author => author.name).join(', ') 
-                          : 'Unknown Author'}
+                      <span className="text-sm text-gray-500">
+                        {paper.authors.map(a => a.name).join(", ")}
                       </span>
                       <span className="ml-3 px-2 py-1 text-xs rounded bg-green-100 text-green-800">
                         {paper.type}
@@ -294,21 +207,13 @@ export default function CollectionsPage() {
                     </div>
                     <h3 className="text-gray-900">{paper.title}</h3>
                     <div className="flex gap-4 mt-1">
-                      <a 
-                        href={paper.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-500 text-sm hover:underline"
-                      >
+                      <a href={paper.url} target="_blank" rel="noopener noreferrer" 
+                         className="text-blue-500 text-sm hover:underline">
                         Open paper
                       </a>
                       {paper.pdfUrl && (
-                        <a 
-                          href={paper.pdfUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-500 text-sm hover:underline"
-                        >
+                        <a href={paper.pdfUrl} target="_blank" rel="noopener noreferrer"
+                           className="text-blue-500 text-sm hover:underline">
                           Download PDF
                         </a>
                       )}
@@ -317,23 +222,15 @@ export default function CollectionsPage() {
                   <span className="text-sm text-gray-500">{paper.year}</span>
                 </div>
               ))}
-              
-              {/* Load More Button */}
+
               {hasMore && (
                 <div className="flex justify-center p-4">
                   <Button
                     onClick={handleLoadMore}
                     disabled={loadingMore}
-                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2"
+                    className="bg-gray-100 hover:bg-gray-200 text-gray-700"
                   >
-                    {loadingMore ? (
-                      <div className="flex items-center">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700 mr-2"></div>
-                        Loading...
-                      </div>
-                    ) : (
-                      'Load More'
-                    )}
+                    {loadingMore ? "Loading..." : "Load More"}
                   </Button>
                 </div>
               )}
@@ -344,26 +241,17 @@ export default function CollectionsPage() {
         {/* Action Buttons */}
         <div className="flex justify-center space-x-4">
           <Button
-            onClick={() => {/* Handle save to collection */}}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2"
-            disabled={selectedPapers.size === 0}
+            onClick={() => {/* Handle save */}}
+            className="bg-blue-500 hover:bg-blue-600 text-white"
+            disabled={selectedCount === 0}
           >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-                d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-            </svg>
-            Save to Collection
+            Save to Collection ({selectedCount})
           </Button>
-
           <Button
             variant="outline"
-            onClick={handleJumpToChat}
-            className="border border-blue-500 text-blue-500 hover:bg-blue-50 px-6 py-2"
+            onClick={() => router.push("/chat")}
+            className="border border-blue-500 text-blue-500 hover:bg-blue-50"
           >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
             Jump to Chat
           </Button>
         </div>
