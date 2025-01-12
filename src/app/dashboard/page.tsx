@@ -50,15 +50,21 @@ export default function DashboardPage() {
         papers: [],
         userId: '',
       };
-
+  
       const createdCollection = await firebaseOperations.createCollection(newCollectionItem);
       setCollections([...collections, createdCollection]);
-
+  
       setNewCollection({ title: '', thesis: '' });
       setIsOpen(false);
-
+  
       const encodedThesis = encodeURIComponent(newCollection.thesis || newCollection.title);
-      router.push(`/library?thesis=${encodedThesis}&newCollection=true`);
+      const searchParams = new URLSearchParams({
+        thesis: encodedThesis,
+        newCollection: 'true',
+        collectionId: createdCollection.id
+      });
+  
+      router.push(`/library?${searchParams.toString()}`);
     } catch (error) {
       console.error('Error creating collection:', error);
     }
