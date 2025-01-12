@@ -9,12 +9,12 @@ const Navbar = () => {
 
   const isLibraryActive =
     pathname === '/library' ||
-    pathname === '/chat' ||
     pathname?.startsWith('/collections');
 
   const navItems = [
-    { label: 'Dashboard', path: '/dashboard', isActive: pathname === '/dashboard' },
+    { label: 'Dashboard', path: '/dashboard', isActive: pathname === '/dashboard' || pathname?.startsWith('/theses')},
     { label: 'Library', path: '/library', isActive: isLibraryActive },
+    { label: 'Chat', path: '/chat', isActive: pathname === '/chat' || pathname?.startsWith('/chat')},
   ];
 
   return (
@@ -48,16 +48,16 @@ const Navbar = () => {
       <div className="flex items-center space-x-2">
         <span className="text-sm font-medium text-gray-700">Yang Gao</span>
         <button className="p-1 rounded-full hover:bg-gray-100">
-          <svg 
-            className="w-5 h-5 text-gray-600" 
-            fill="none" 
-            stroke="currentColor" 
+          <svg
+            className="w-5 h-5 text-gray-600"
+            fill="none"
+            stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth="2" 
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
               d="M19 9l-7 7-7-7"
             />
           </svg>
