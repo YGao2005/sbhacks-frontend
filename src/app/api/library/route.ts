@@ -1,45 +1,66 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+export interface Paper {
+  paperId: string;
+  title: string;
+  url: string;
+  pdfUrl: string;
+  type: string;
+  year: number;
+  authors: {
+    id: string;
+    name: string;
+  }[];
+  selected?: boolean;
+}
+
 // In your API route
 export async function POST(req: NextRequest) {
   try {
-    const { query, limit = 3, offset = 0 } = await req.json();
+    const { query, limit = 3, offset = 0, excludedPaperIds = [] } = await req.json();
     
-    // Encode the query parameters 
     const encodedQuery = encodeURIComponent(query);
-    const fields = encodeURIComponent('paperId,title,url,openAccessPdf,authors');
-      
-    // Make request to Semantic Scholar API with offset
-    const semanticScholarResponse = await fetch(
-      `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodedQuery}&fields=${fields}&offset=${offset}&limit=${limit}`
+    const email = encodeURIComponent('your-email@example.com');
+    
+    // Request more items than needed to account for filtering
+    const extraLimit = limit * 2;
+    
+    const openAlexResponse = await fetch(
+      `https://api.openalex.org/works?search=${encodedQuery}&per_page=${extraLimit}&page=${Math.floor(offset/limit) + 1}&select=title,authorships,publication_year,type,open_access,id&mailto=${email}`
     );
 
-    if (!semanticScholarResponse.ok) {
+    if (!openAlexResponse.ok) {
       return NextResponse.json({ 
-        error: 'Failed to fetch from Semantic Scholar API'
-      }, { status: semanticScholarResponse.status });
+        error: 'Failed to fetch from OpenAlex API'
+      }, { status: openAlexResponse.status });
     }
 
-    const data = await semanticScholarResponse.json();
+    const data = await openAlexResponse.json();
     
-    // Process papers with PDF URLs
-    const papers = data.data
-      .filter((paper: any) => paper.openAccessPdf?.url)
+    // Filter out papers without PDF URLs and excluded papers
+    const papers: Paper[] = data.results
+      .filter((paper: any) => 
+        paper.open_access?.oa_url && // Has PDF URL
+        !excludedPaperIds.includes(paper.id) // Not in excluded list
+      )
+      .slice(0, limit) // Take only the requested number of papers
       .map((paper: any) => ({
-        paperId: paper.paperId,
+        paperId: paper.id,
         title: paper.title,
-        url: paper.url,
-        pdfUrl: paper.openAccessPdf.url,
-        authors: paper.authors.map((author: any) => ({
-          id: author.authorId,
-          name: author.name
+        type: paper.type,
+        url: paper.id,
+        pdfUrl: paper.open_access.oa_url,
+        year: paper.publication_year,
+        authors: paper.authorships.map((authorship: any) => ({
+          id: authorship.author.id,
+          name: authorship.author.display_name
         }))
       }));
 
     return NextResponse.json({ 
       papers,
-      hasMore: true // Always indicate there are more papers
+      hasMore: data.meta?.count > (offset + limit)
     });
 
   } catch (error) {
