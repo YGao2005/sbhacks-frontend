@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { firebaseOperations } from '@/lib/firebase';
 import {
   Dialog,
   DialogContent,
@@ -31,60 +32,65 @@ export default function DashboardPage() {
   const [newCollection, setNewCollection] = useState({ title: '', thesis: '' });
   const [collections, setCollections] = useState<Collection[]>([]);
 
-  // Load collections from local storage on component mount
+  // Load collections from Firebase on component mount
   useEffect(() => {
-    const storedCollections = localStorage.getItem('collections');
-    if (storedCollections) {
-      setCollections(JSON.parse(storedCollections));
-    }
+    const loadCollections = async () => {
+      const fetchedCollections = await firebaseOperations.getCollections();
+      setCollections(fetchedCollections);
+    };
+    loadCollections();
   }, []);
 
-  // Update local storage whenever collections change
-  useEffect(() => {
-    localStorage.setItem('collections', JSON.stringify(collections));
-  }, [collections]);
-
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!newCollection.title.trim()) return;
   
-    const newId = (collections.length + 1).toString();
-    const newCollectionItem = {
-      id: newId,
-      name: newCollection.title,
-      thesis: newCollection.thesis,
-      papersCount: 0,
-      lastUpdated: new Date().toISOString().split('T')[0]
-    };
-  
-    setCollections([...collections, newCollectionItem]);
-  
-    setNewCollection({ title: '', thesis: '' });
-    setIsOpen(false);
+    try {
+      const newCollectionItem = {
+        name: newCollection.title,
+        thesis: newCollection.thesis,
+        papersCount: 0,
+        lastUpdated: new Date().toISOString().split('T')[0]
+      };
     
-    // Navigate to library with the thesis for searching
-    const encodedThesis = encodeURIComponent(newCollection.thesis || newCollection.title);
-    router.push(`/library?thesis=${encodedThesis}&newCollection=true`);
+      const createdCollection = await firebaseOperations.createCollection(newCollectionItem);
+      setCollections([...collections, createdCollection]);
+    
+      setNewCollection({ title: '', thesis: '' });
+      setIsOpen(false);
+      
+      // Navigate to library with the thesis for searching
+      const encodedThesis = encodeURIComponent(newCollection.thesis || newCollection.title);
+      router.push(`/library?thesis=${encodedThesis}&newCollection=true`);
+    } catch (error) {
+      console.error('Error creating collection:', error);
+    }
   };
 
-  const handleDeleteClick = (collection: Collection) => {
+  const handleDeleteClick = (collection: Collection, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering the parent onClick
     setCollectionToDelete(collection);
     setDeleteDialogOpen(true);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (collectionToDelete) {
-      setCollections(collections.filter(collection => collection.id !== collectionToDelete.id));
-      setDeleteDialogOpen(false);
-      setCollectionToDelete(null);
+      try {
+        await firebaseOperations.deleteCollection(collectionToDelete.id);
+        setCollections(collections.filter(collection => collection.id !== collectionToDelete.id));
+        setDeleteDialogOpen(false);
+        setCollectionToDelete(null);
+      } catch (error) {
+        console.error('Error deleting collection:', error);
+      }
     }
   };
 
   const handleCollectionClick = (collection: Collection) => {
-    // For existing collections, we'll show their contents
     router.push(`/collection/${collection.id}`);
   };
 
+  // Rest of your component remains exactly the same...
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Main Content */}
@@ -204,7 +210,7 @@ export default function DashboardPage() {
                   <span className="text-sm text-gray-500">{collection.papersCount} papers</span>
                 </div>
                 <button
-                  onClick={() => handleDeleteClick(collection)}
+                  onClick={(e) => handleDeleteClick(collection, e)}
                   className="text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                 >
                   <svg 
