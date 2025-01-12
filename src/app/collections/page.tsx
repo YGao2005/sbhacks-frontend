@@ -303,7 +303,7 @@ export default function CollectionsPage() {
         <h1 className="text-2xl font-semibold text-black text-center mb-8">
           {lastSubmittedQuery
             ? `Results for "${lastSubmittedQuery}"`
-            : "Search Papers and Articles"}
+            : "Search More Papers and Articles"}
         </h1>
 
         {/* Results List */}
