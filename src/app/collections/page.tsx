@@ -188,6 +188,9 @@ export default function CollectionsPage() {
 
   const handleSaveToCollection = async (collectionId: string) => {
     try {
+      // Close the modal immediately when the save operation starts
+      setIsCollectionModalOpen(false);
+      
       const selectedPapersArray = Array.from(selectedPapers);
       const selectedPapersData = searchResults.filter((paper) =>
         selectedPapers.has(paper.paperId)
@@ -241,21 +244,17 @@ export default function CollectionsPage() {
         )
       ]);
   
-      // Close modal and reset selection regardless of PDF upload status
-      setIsCollectionModalOpen(false);
+      // Reset selection after save operation completes
       setSelectedPapers(new Set());
   
       // Handle results
       if (collectionSaveResult.status === 'fulfilled') {
-        // Collection save was successful
         console.log('Papers saved to collection successfully');
       } else {
         console.error('Error saving to collection:', collectionSaveResult.reason);
-        // Handle collection save error
       }
   
       if (pdfUploadResults.status === 'fulfilled') {
-        // Log PDF upload results
         const uploads = pdfUploadResults.value;
         const successfulUploads = uploads.filter(result => result.status === 'success');
         const failedUploads = uploads.filter(result => result.status === 'error');
@@ -267,16 +266,16 @@ export default function CollectionsPage() {
           Skipped: ${skippedUploads.length}`
         );
   
-        // Optionally notify user of upload status
         if (failedUploads.length > 0) {
-          // Show warning/error notification about failed uploads
           console.warn('Some PDFs failed to upload:', failedUploads);
         }
       }
   
     } catch (error) {
       console.error("Error in handleSaveToCollection:", error);
-      // Show error message to user
+      // Even if there's an error, ensure the modal is closed
+      setIsCollectionModalOpen(false);
+      setSelectedPapers(new Set());
     }
   };
 

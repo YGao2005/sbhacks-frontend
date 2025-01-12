@@ -259,67 +259,120 @@ export default function LibraryPage() {
       });
       return;
     }
-
+  
     setIsSaving(true);
     setUploadLoading(true);
-
+  
     try {
       const collectionRef = doc(db, "collections", collectionId);
       const collectionSnap = await getDoc(collectionRef);
-
+  
       if (!collectionSnap.exists()) {
         throw new Error("Collection not found");
       }
-
+  
       const papersToAdd = searchResults
         .flatMap((group) => group.papers)
-        .filter((paper) => selectedPapers.has(paper.id))
-        .map((paper) => ({
-          id: paper.id,
-          authors: paper.authors,
-          type: paper.type,
-          title: paper.title,
-          url: paper.url,
-          year: paper.year,
-          pdfUrl: paper.pdfUrl,
-        }));
-
-      await updateDoc(collectionRef, {
-        papers: arrayUnion(...papersToAdd),
-        papersCount: increment(papersToAdd.length),
-        lastUpdated: Date.now(),
-      });
-
-      // Show success toast with a check icon
-      toast({
-        title: "Papers saved successfully!",
-        description: (
-          <div className="flex items-center space-x-2">
-            <svg
-              className="w-5 h-5 text-green-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-            <span>{`Added ${papersToAdd.length} paper${
-              papersToAdd.length === 1 ? "" : "s"
-            } to your collection`}</span>
-          </div>
+        .filter((paper) => selectedPapers.has(paper.id));
+  
+      // Start both operations concurrently
+      const [collectionUpdate, pdfUploads] = await Promise.allSettled([
+        // Update Firebase collection
+        updateDoc(collectionRef, {
+          papers: arrayUnion(...papersToAdd),
+          papersCount: increment(papersToAdd.length),
+          lastUpdated: Date.now(),
+        }),
+  
+        // Upload PDFs in parallel
+        Promise.all(
+          papersToAdd.map(async (paper) => {
+            if (paper.pdfUrl) {
+              try {
+                const response = await fetch('/api/upload-pdf', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ pdfUrl: paper.pdfUrl }),
+                });
+  
+                if (!response.ok) {
+                  throw new Error(`Failed to upload PDF for paper: ${paper.id}`);
+                }
+  
+                return {
+                  paperId: paper.id,
+                  status: 'success',
+                  data: await response.json(),
+                };
+              } catch (error) {
+                console.error(`Error uploading PDF for paper ${paper.id}:`, error);
+                return {
+                  paperId: paper.id,
+                  status: 'error',
+                  error: error instanceof Error ? error.message : 'Unknown error',
+                };
+              }
+            }
+            return {
+              paperId: paper.id,
+              status: 'skipped',
+              message: 'No PDF URL available',
+            };
+          })
         ),
-        duration: 3000,
-      });
-
+      ]);
+  
+      // Handle collection update result
+      if (collectionUpdate.status === 'fulfilled') {
+        toast({
+          title: "Papers saved successfully!",
+          description: (
+            <div className="flex items-center space-x-2">
+              <svg
+                className="w-5 h-5 text-green-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+              <span>{`Added ${papersToAdd.length} paper${
+                papersToAdd.length === 1 ? "" : "s"
+              } to your collection`}</span>
+            </div>
+          ),
+          duration: 3000,
+        });
+      }
+  
+      // Handle PDF upload results
+      if (pdfUploads.status === 'fulfilled') {
+        const uploads = pdfUploads.value;
+        const failedUploads = uploads.filter(result => result.status === 'error');
+        
+        if (failedUploads.length > 0) {
+          toast({
+            title: "Some PDFs failed to upload",
+            description: `${failedUploads.length} PDF${
+              failedUploads.length === 1 ? "" : "s"
+            } failed to upload`,
+            variant: "default",
+          });
+        }
+      }
+  
       // Add a slight delay before redirect for better UX
       setTimeout(() => {
         router.push("/collections");
       }, 1000);
+  
     } catch (error) {
       console.error("Error saving to collection:", error);
       toast({
