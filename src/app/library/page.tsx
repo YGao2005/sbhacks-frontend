@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "./../components/ui/button";
 import { Checkbox } from "./../components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast"
-import { url } from 'inspector';
 
 interface Paper {
   id: string;
@@ -22,7 +21,12 @@ interface SearchResultGroup {
   concept: string;
   papers: Paper[];
   total: number;
+  hasMore: boolean;
+  offset: number;
+  loading: boolean;
 }
+
+const LIMIT = 10;
 
 export default function LibraryPage() {
   const { toast } = useToast();
@@ -33,7 +37,6 @@ export default function LibraryPage() {
   const [uploadLoading, setUploadLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPapers, setSelectedPapers] = useState<Set<string>>(new Set());
-  const [totalResults, setTotalResults] = useState(0);
 
   const thesis = searchParams.get('thesis');
   const isNewCollection = searchParams.get('newCollection') === 'true';
@@ -53,8 +56,6 @@ export default function LibraryPage() {
       }
 
       const data = await response.json();
-      // Parse the JSON string from the response
-      console.log('Data:', data);
       const parsedResponse = JSON.parse(data.response.replace('```json\n', '').replace('\n```', ''));
       return parsedResponse.main_concepts;
     } catch (error) {
@@ -63,32 +64,40 @@ export default function LibraryPage() {
     }
   };
 
-
-  const searchPapers = async (searchQuery: string, concept: string): Promise<SearchResultGroup> => {
+  const LIMIT = 6;
+  const MAX_RETRIES = 3;  // Maximum number of retries for each concept
+  const MIN_PAPERS = 4;   // Minimum number of papers we want for each concept
+  
+  const searchPapersWithRetry = async (
+    searchQuery: string, 
+    concept: string, 
+    offset: number = 0,
+    retryCount: number = 0
+  ): Promise<{
+    papers: Paper[];
+    total: number;
+    hasMore: boolean;
+    nextOffset: number;
+  }> => {
     try {
       const response = await fetch('/api/library', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query: searchQuery }),
+        body: JSON.stringify({ 
+          query: searchQuery,
+          offset,
+          limit: LIMIT
+        }),
       });
-
+  
       if (!response.ok) {
         throw new Error(`Error searching papers: ${response.statusText}`);
       }
-
+  
       const data = await response.json();
-      
-      if (!data.papers || data.papers.length === 0) {
-        return {
-          concept,
-          papers: [],
-          total: 0
-        };
-      }
-
-      const results: Paper[] = data.papers.map((paper: any) => ({
+      const results: Paper[] = data.papers?.map((paper: any) => ({
         id: paper.paperId,
         authors: paper.authors || [],
         url: paper.url,
@@ -96,40 +105,115 @@ export default function LibraryPage() {
         title: paper.title,
         year: new Date().getFullYear(),
         pdfUrl: paper.pdfUrl
-      }));
-
+      })) || [];
+  
+      // If we don't have enough papers and haven't exceeded retry limit, try to fetch more
+      if (results.length < MIN_PAPERS && retryCount < MAX_RETRIES) {
+        const additionalResults = await searchPapersWithRetry(
+          searchQuery,
+          concept,
+          offset + results.length,
+          retryCount + 1
+        );
+  
+        return {
+          papers: [...results, ...additionalResults.papers],
+          total: Math.max(data.total || 0, results.length + additionalResults.papers.length),
+          hasMore: additionalResults.hasMore,
+          nextOffset: additionalResults.nextOffset
+        };
+      }
+  
       return {
-        concept,
         papers: results,
-        total: data.total || results.length
+        total: data.total || results.length,
+        hasMore: data.hasMore,
+        nextOffset: data.nextOffset || (offset + results.length)
       };
     } catch (error) {
-      console.error(`Search error for concept "${concept}":`, error);
+      console.error(`Search error for concept "${concept}" (retry ${retryCount}):`, error);
+      if (retryCount < MAX_RETRIES) {
+        // Wait a short time before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return searchPapersWithRetry(searchQuery, concept, offset, retryCount + 1);
+      }
       throw error;
     }
   };
 
   const performSemanticSearch = async (mainQuery: string) => {
-    console.log('Performing semantic search for:', mainQuery);
     setLoading(true);
     setError(null);
     try {
-      // Get semantic parts
       const concepts = await getSemanticParts(mainQuery);
       
-      // Search papers for each concept
       const searchPromises = concepts.map(concept => 
-        searchPapers(concept, concept)
+        searchPapersWithRetry(concept, concept)
       );
 
       const results = await Promise.all(searchPromises);
-      setSearchResults(results);
+      
+      // Transform results into SearchResultGroup format
+      const groupResults = results.map((result, index) => ({
+        concept: concepts[index],
+        papers: result.papers,
+        total: result.total,
+        hasMore: result.hasMore,
+        offset: result.nextOffset,
+        loading: false,
+        retryCount: 0
+      }));
+
+      setSearchResults(groupResults.filter(group => group.papers.length > 0));
     } catch (error) {
       console.error('Comprehensive search error:', error);
-      setError(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setError('Failed to load search results. Please try again.');
       setSearchResults([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLoadMore = async (concept: string, groupIndex: number) => {
+    const group = searchResults[groupIndex];
+    if (!group || group.loading || !group.hasMore) return;
+
+    setSearchResults(prev => prev.map((g, i) => 
+      i === groupIndex ? { ...g, loading: true } : g
+    ));
+
+    try {
+      const results = await searchPapersWithRetry(
+        concept,
+        concept,
+        group.offset,
+        0
+      );
+      
+      setSearchResults(prev => prev.map((g, i) => {
+        if (i === groupIndex) {
+          return {
+            ...g,
+            papers: [...g.papers, ...results.papers],
+            hasMore: results.hasMore,
+            offset: results.nextOffset,
+            loading: false,
+            retryCount: 0
+          };
+        }
+        return g;
+      }));
+    } catch (error) {
+      console.error(`Load more error for concept "${concept}":`, error);
+      setSearchResults(prev => prev.map((g, i) => 
+        i === groupIndex ? { ...g, loading: false } : g
+      ));
+      
+      toast({
+        title: "Error",
+        description: "Failed to load more papers. Please try again.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -283,54 +367,86 @@ export default function LibraryPage() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
           </div>
         ) : (
-          searchResults.map((group, index) => (
-            <div key={index} className="mb-8">
+          searchResults.map((group, groupIndex) => (
+            <div key={groupIndex} className="mb-8">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">
                 {group.concept} ({group.total} results)
               </h2>
               <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
                 {group.papers.length > 0 ? (
-                  group.papers.map((paper) => (
-                    <div 
-                      key={paper.id}
-                      className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
-                    >
-                      <Checkbox
-                        checked={selectedPapers.has(paper.id)}
-                        onCheckedChange={() => togglePaperSelection(paper.id)}
-                        className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
-                      />
-                      <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center mb-1">
-                          <span className="text-sm font-medium text-gray-500">
-                            {paper.authors.length > 0 
-                              ? paper.authors.map(author => author.name).join(', ') 
-                              : 'Unknown Author'}
-                          </span>
-                          <span className="ml-3 px-2 py-1 text-xs rounded bg-green-100 text-green-800">
-                            {paper.type}
-                          </span>
+                  <>
+                    {group.papers.map((paper) => (
+                      <div 
+                        key={paper.id}
+                        className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
+                      >
+                        <Checkbox
+                          checked={selectedPapers.has(paper.id)}
+                          onCheckedChange={() => togglePaperSelection(paper.id)}
+                          className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
+                        />
+                        <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                          </svg>
                         </div>
-                        <h3 className="text-gray-900">{paper.title}</h3>
-                        {paper.url && (
-                          <a 
-                            href={paper.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="text-blue-500 text-sm hover:underline"
-                          >
-                            Open paper
-                          </a>
-                        )}
+                        <div className="flex-1">
+                          <div className="flex items-center mb-1">
+                            <span className="text-sm font-medium text-gray-500">
+                              {paper.authors.length > 0 
+                                ? paper.authors.map(author => author.name).join(', ') 
+                                : 'Unknown Author'}
+                            </span>
+                            <span className="ml-3 px-2 py-1 text-xs rounded bg-green-100 text-green-800">
+                              {paper.type}
+                            </span>
+                          </div>
+                          <h3 className="text-gray-900">{paper.title}</h3>
+                          <div className="flex gap-4 mt-1">
+                            <a 
+                              href={paper.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-500 text-sm hover:underline"
+                            >
+                              Open paper
+                            </a>
+                            {paper.pdfUrl && (
+                              <a 
+                                href={paper.pdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-500 text-sm hover:underline"
+                              >
+                                Open PDF
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-sm text-gray-500">{paper.year}</span>
                       </div>
-                      <span className="text-sm text-gray-500">{paper.year}</span>
-                    </div>
-                  ))
+                    ))}
+                    
+                    {/* Load More Button */}
+                    {group.hasMore && (
+                      <div className="flex justify-center p-4">
+                        <Button
+                          onClick={() => handleLoadMore(group.concept, groupIndex)}
+                          disabled={group.loading}
+                          className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2"
+                        >
+                          {group.loading ? (
+                            <div className="flex items-center">
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700 mr-2"></div>
+                              Loading...
+                            </div>
+                          ) : (
+                            'Load More'
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="text-center p-8 text-gray-500">
                     No results found for this concept.
@@ -341,6 +457,7 @@ export default function LibraryPage() {
           ))
         )}
 
+        {/* Action Buttons */}
         <div className="flex justify-between items-center">
           <Button 
             variant="outline" 

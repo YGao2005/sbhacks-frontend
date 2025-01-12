@@ -5,52 +5,185 @@ import { useRouter } from 'next/navigation';
 import { Button } from "./../components/ui/button";
 import { Checkbox } from "./../components/ui/checkbox";
 import { Input } from "./../components/ui/input";
-import { searchPapers } from './search-api'; // Import the mock search API
 
-export interface Paper {
-  id: number;
-  author: string;
-  type: 'Paper' | 'Article';
+interface Author {
+  id: string;
+  name: string;
+}
+
+interface Paper {
+  id: string;
   title: string;
+  url: string;
+  pdfUrl: string;
+  authors: Author[];
+  type: 'Paper' | 'Article';
   year: number;
   selected?: boolean;
 }
+
+interface SearchResponse {
+  total: number;
+  papers: Paper[];
+  hasMore: boolean;
+  nextOffset: number;
+  currentLimit: number;
+  currentOffset: number;
+}
+
+const MIN_INITIAL_PAPERS = 6;  // Minimum papers for initial load
+const MIN_LOAD_MORE_PAPERS = 4;  // Minimum papers for each load more
+const MAX_RETRIES = 3;  // Maximum number of retry attempts
+const LIMIT = 10;
+
 
 export default function CollectionsPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Paper[]>([]);
-  const [selectedPapers, setSelectedPapers] = useState<Set<number>>(new Set());
+  const [selectedPapers, setSelectedPapers] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [lastSubmittedQuery, setLastSubmittedQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [currentOffset, setCurrentOffset] = useState(0);
+  const [total, setTotal] = useState(0);
 
-  // Initial search when component loads
+  const LIMIT = 10;
+
+  // Initial load - now empty until search
   useEffect(() => {
-    const initialSearch = async () => {
-      setLoading(true);
-      try {
-        const results = await searchPapers('');
-        setSearchResults(results);
-      } catch (error) {
-        console.error('Initial search error:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    setSearchResults([]);
+  }, []);
 
-    initialSearch();
+  const searchPapersWithRetry = async (
+    query: string,
+    offset: number = 0,
+    minPapers: number,
+    retryCount: number = 0
+  ): Promise<SearchResponse> => {
+    try {
+      const response = await fetch('/api/library', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          query,
+          offset,
+          limit: LIMIT
+        }),
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to search papers');
+      }
+  
+      const data: SearchResponse = await response.json();
+      
+      // If we don't have enough papers and haven't exceeded retry limit, try to fetch more
+      if (data.papers.length < minPapers && data.hasMore && retryCount < MAX_RETRIES) {
+        // Wait a short time before retrying to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        
+        const additionalData = await searchPapersWithRetry(
+          query,
+          offset + data.papers.length,
+          minPapers - data.papers.length,
+          retryCount + 1
+        );
+  
+        return {
+          papers: [...data.papers, ...additionalData.papers],
+          total: Math.max(data.total, data.papers.length + additionalData.papers.length),
+          hasMore: additionalData.hasMore,
+          nextOffset: additionalData.nextOffset,
+          currentLimit: LIMIT,
+          currentOffset: offset
+        };
+      }
+  
+      return data;
+    } catch (error) {
+      if (retryCount < MAX_RETRIES) {
+        // Wait before retrying with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+        return searchPapersWithRetry(query, offset, minPapers, retryCount + 1);
+      }
+      throw error;
+    }
+  };
+
+  useEffect(() => {
+    setSearchResults([]);
   }, []);
 
   const handleSearch = async (query: string) => {
     setLoading(true);
+    setError(null);
     try {
-      const results = await searchPapers(query);
-      setSearchResults(results);
+      const data = await searchPapersWithRetry(query, 0, MIN_INITIAL_PAPERS);
+      
+      // Transform the papers data
+      const transformedPapers = data.papers.map(paper => ({
+        id: paper.id,
+        title: paper.title,
+        url: paper.url,
+        pdfUrl: paper.pdfUrl,
+        authors: paper.authors,
+        type: 'Paper' as const,
+        year: new Date().getFullYear(),
+        selected: false
+      }));
+
+      setSearchResults(transformedPapers);
+      setHasMore(data.hasMore);
+      setCurrentOffset(data.nextOffset);
+      setTotal(data.total);
       setLastSubmittedQuery(query);
     } catch (error) {
       console.error('Search error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to search papers');
+      setSearchResults([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLoadMore = async () => {
+    if (!lastSubmittedQuery || loadingMore) return;
+    
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const data = await searchPapersWithRetry(
+        lastSubmittedQuery,
+        currentOffset,
+        MIN_LOAD_MORE_PAPERS
+      );
+      
+      const transformedPapers = data.papers.map(paper => ({
+        id: paper.id,
+        title: paper.title,
+        url: paper.url,
+        pdfUrl: paper.pdfUrl,
+        authors: paper.authors,
+        type: 'Paper' as const,
+        year: new Date().getFullYear(),
+        selected: false
+      }));
+
+      setSearchResults(prev => [...prev, ...transformedPapers]);
+      setHasMore(data.hasMore);
+      setCurrentOffset(data.nextOffset);
+      setTotal(data.total);
+    } catch (error) {
+      console.error('Load more error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load more papers');
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -60,13 +193,13 @@ export default function CollectionsPage() {
     }
   };
 
-  const togglePaperSelection = (id: number) => {
+  const togglePaperSelection = (paperId: string) => {
     setSelectedPapers(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
+      if (newSet.has(paperId)) {
+        newSet.delete(paperId);
       } else {
-        newSet.add(id);
+        newSet.add(paperId);
       }
       return newSet;
     });
@@ -90,11 +223,9 @@ export default function CollectionsPage() {
             </div>
             <Input
               type="text"
-              placeholder="Find a paper or article"
+              placeholder="Search academic papers"
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-              }}
+              onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               className="flex-1 border-none focus:ring-0 text-base text-gray-900"
             />
@@ -110,9 +241,16 @@ export default function CollectionsPage() {
         {/* Results Title */}
         <h1 className="text-2xl font-semibold text-black text-center mb-8">
           {lastSubmittedQuery 
-            ? `Results for "${lastSubmittedQuery}"` 
-            : 'Search Papers and Articles'}
+            ? `Results for "${lastSubmittedQuery}" (${total} papers found)` 
+            : 'Search Academic Papers'}
         </h1>
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6">
+            {error}
+          </div>
+        )}
 
         {/* Results List */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
@@ -123,41 +261,83 @@ export default function CollectionsPage() {
           ) : searchResults.length === 0 ? (
             <div className="flex justify-center items-center h-32 text-gray-500">
               {lastSubmittedQuery 
-                ? 'No results found' 
+                ? 'No papers found with PDF access' 
                 : 'Enter a search term to find papers'}
             </div>
           ) : (
-            searchResults.map((paper) => (
-              <div 
-                key={paper.id}
-                className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
-              >
-                <Checkbox
-                  checked={selectedPapers.has(paper.id)}
-                  onCheckedChange={() => togglePaperSelection(paper.id)}
-                  className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
-                />
-                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center mb-1">
-                    <span className="text-sm font-medium">{paper.author}</span>
-                    <span className={`ml-3 px-2 py-1 text-xs rounded ${
-                      paper.type === 'Paper' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {paper.type}
-                    </span>
+            <>
+              {searchResults.map((paper) => (
+                <div 
+                  key={paper.id}
+                  className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
+                >
+                  <Checkbox
+                    checked={selectedPapers.has(paper.id)}
+                    onCheckedChange={() => togglePaperSelection(paper.id)}
+                    className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
+                  />
+                  <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white mr-4">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
                   </div>
-                  <h3 className="text-gray-900">{paper.title}</h3>
+                  <div className="flex-1">
+                    <div className="flex items-center mb-1">
+                      <span className="text-sm font-medium text-gray-500">
+                        {paper.authors.length > 0 
+                          ? paper.authors.map(author => author.name).join(', ') 
+                          : 'Unknown Author'}
+                      </span>
+                      <span className="ml-3 px-2 py-1 text-xs rounded bg-green-100 text-green-800">
+                        {paper.type}
+                      </span>
+                    </div>
+                    <h3 className="text-gray-900">{paper.title}</h3>
+                    <div className="flex gap-4 mt-1">
+                      <a 
+                        href={paper.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-500 text-sm hover:underline"
+                      >
+                        Open paper
+                      </a>
+                      {paper.pdfUrl && (
+                        <a 
+                          href={paper.pdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-500 text-sm hover:underline"
+                        >
+                          Download PDF
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-sm text-gray-500">{paper.year}</span>
                 </div>
-                <span className="text-sm text-gray-500">{paper.year}</span>
-              </div>
-            ))
+              ))}
+              
+              {/* Load More Button */}
+              {hasMore && (
+                <div className="flex justify-center p-4">
+                  <Button
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2"
+                  >
+                    {loadingMore ? (
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700 mr-2"></div>
+                        Loading...
+                      </div>
+                    ) : (
+                      'Load More'
+                    )}
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -166,6 +346,7 @@ export default function CollectionsPage() {
           <Button
             onClick={() => {/* Handle save to collection */}}
             className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2"
+            disabled={selectedPapers.size === 0}
           >
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
