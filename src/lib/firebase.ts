@@ -42,7 +42,7 @@ export interface Message {
   content: string;
   timestamp: string;
   isUser: boolean;
-  paperId: string;
+  paperId?: string;
 }
 
 // Define the type for collection data without ID
@@ -79,19 +79,34 @@ export const firebaseOperations = {
     }
   },
 
-  updateMessages: async (collectionId: string, newMessages: Message[]) => {
-    const collectionRef = doc(db, 'collections', collectionId);
-    try {
-      await updateDoc(collectionRef, {
-        messages: arrayUnion(...newMessages)
-      });
-    } catch (error) {
-      console.error('Error updating messages:', error);
-      throw error;
-    }
-  },
+  // lib/firebase.ts
+updateMessages: async (collectionId: string, newMessages: Message[]) => {
+  const collectionRef = doc(db, 'collections', collectionId);
+  try {
+    // Filter out any undefined or invalid messages
+    const validMessages = newMessages.filter(msg => 
+      msg && msg.content && msg.timestamp && typeof msg.isUser === 'boolean'
+    );
 
-  getMessages: async (collectionId: string, paperId: string): Promise<Message[]> => {
+    // Convert messages to plain objects
+    const messageObjects = validMessages.map(msg => ({
+      id: msg.id,
+      content: msg.content,
+      timestamp: msg.timestamp,
+      isUser: msg.isUser,
+      paperId: msg.paperId || ''
+    }));
+
+    await updateDoc(collectionRef, {
+      messages: arrayUnion(...messageObjects)
+    });
+  } catch (error) {
+    console.error('Error updating messages:', error);
+    throw error;
+  }
+},
+
+  getMessagesForPaper: async (collectionId: string, paperId: string): Promise<Message[]> => {
     try {
       const messagesRef = collection(db, 'collections', collectionId, 'messages');
       const snapshot = await getDocs(messagesRef);
@@ -104,6 +119,22 @@ export const firebaseOperations = {
       return allMessages.filter(message => message.paperId === paperId);
     } catch (error) {
       console.error('Error getting messages:', error);
+      return [];
+    }
+  },
+
+  async getMessages(collectionId: string): Promise<Message[]> {
+    try {
+      const collectionRef = doc(db, "collections", collectionId);
+      const collectionDoc = await getDoc(collectionRef);
+      
+      if (collectionDoc.exists()) {
+        const data = collectionDoc.data();
+        return data.messages || [];
+      }
+      return [];
+    } catch (error) {
+      console.error("Error fetching messages:", error);
       return [];
     }
   },

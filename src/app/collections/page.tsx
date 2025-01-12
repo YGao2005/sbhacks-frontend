@@ -192,17 +192,91 @@ export default function CollectionsPage() {
       const selectedPapersData = searchResults.filter((paper) =>
         selectedPapers.has(paper.paperId)
       );
-
-      await firebaseOperations.addPapersToCollection(
-        collectionId,
-        selectedPapersData
-      );
+  
+      // Start both operations concurrently
+      const [collectionSaveResult, pdfUploadResults] = await Promise.allSettled([
+        // Save to Firebase collection
+        firebaseOperations.addPapersToCollection(
+          collectionId,
+          selectedPapersData
+        ),
+        
+        // Upload PDFs in parallel
+        Promise.all(
+          selectedPapersData.map(async (paper) => {
+            if (paper.pdfUrl) {
+              try {
+                const response = await fetch('/api/upload-pdf', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ pdfUrl: paper.pdfUrl }),
+                });
+                
+                if (!response.ok) {
+                  throw new Error(`Failed to upload PDF for paper: ${paper.paperId}`);
+                }
+                
+                return {
+                  paperId: paper.paperId,
+                  status: 'success',
+                  data: await response.json(),
+                };
+              } catch (error) {
+                console.error(`Error uploading PDF for paper ${paper.paperId}:`, error);
+                return {
+                  paperId: paper.paperId,
+                  status: 'error',
+                  error: (error as Error).message,
+                };
+              }
+            }
+            return {
+              paperId: paper.paperId,
+              status: 'skipped',
+              message: 'No PDF URL available',
+            };
+          })
+        )
+      ]);
+  
+      // Close modal and reset selection regardless of PDF upload status
       setIsCollectionModalOpen(false);
       setSelectedPapers(new Set());
-      // Optionally show a success message
+  
+      // Handle results
+      if (collectionSaveResult.status === 'fulfilled') {
+        // Collection save was successful
+        console.log('Papers saved to collection successfully');
+      } else {
+        console.error('Error saving to collection:', collectionSaveResult.reason);
+        // Handle collection save error
+      }
+  
+      if (pdfUploadResults.status === 'fulfilled') {
+        // Log PDF upload results
+        const uploads = pdfUploadResults.value;
+        const successfulUploads = uploads.filter(result => result.status === 'success');
+        const failedUploads = uploads.filter(result => result.status === 'error');
+        const skippedUploads = uploads.filter(result => result.status === 'skipped');
+  
+        console.log(`PDF uploads completed:
+          Successful: ${successfulUploads.length}
+          Failed: ${failedUploads.length}
+          Skipped: ${skippedUploads.length}`
+        );
+  
+        // Optionally notify user of upload status
+        if (failedUploads.length > 0) {
+          // Show warning/error notification about failed uploads
+          console.warn('Some PDFs failed to upload:', failedUploads);
+        }
+      }
+  
     } catch (error) {
-      console.error("Error saving papers to collection:", error);
-      // Optionally show an error message
+      console.error("Error in handleSaveToCollection:", error);
+      // Show error message to user
     }
   };
 
