@@ -13,6 +13,7 @@ import {
   DialogDescription,
 } from "./../components/ui/dialog";
 import { firebaseOperations } from "@/lib/firebase";
+import { motion, AnimatePresence } from "framer-motion";
 
 export interface Paper {
   paperId: string; // Changed from id: number
@@ -210,17 +211,52 @@ export default function CollectionsPage() {
     setIsCollectionModalOpen(true);
   };
 
-  const getTypeStyle = (type: string): string => {
-    const styleMap: { [key: string]: string } = {
-      Article: "bg-blue-100 text-blue-800",
-      "Book Chapter": "bg-purple-100 text-purple-800",
-      Dataset: "bg-green-100 text-green-800",
-      Preprint: "bg-yellow-100 text-yellow-800",
-      Dissertation: "bg-red-100 text-red-800",
-      Book: "bg-indigo-100 text-indigo-800",
-      Review: "bg-pink-100 text-pink-800",
-      // Add more styles for other types as needed
-      Other: "bg-gray-100 text-gray-800",
+  const getTypeStyle = (
+    type: string
+  ): { bg: string; text: string; border: string } => {
+    const styleMap: {
+      [key: string]: { bg: string; text: string; border: string };
+    } = {
+      Article: {
+        bg: "bg-blue-50",
+        text: "text-blue-700",
+        border: "border-blue-200",
+      },
+      "Book Chapter": {
+        bg: "bg-purple-50",
+        text: "text-purple-700",
+        border: "border-purple-200",
+      },
+      Dataset: {
+        bg: "bg-green-50",
+        text: "text-green-700",
+        border: "border-green-200",
+      },
+      Preprint: {
+        bg: "bg-amber-50",
+        text: "text-amber-700",
+        border: "border-amber-200",
+      },
+      Dissertation: {
+        bg: "bg-red-50",
+        text: "text-red-700",
+        border: "border-red-200",
+      },
+      Book: {
+        bg: "bg-indigo-50",
+        text: "text-indigo-700",
+        border: "border-indigo-200",
+      },
+      Review: {
+        bg: "bg-pink-50",
+        text: "text-pink-700",
+        border: "border-pink-200",
+      },
+      Other: {
+        bg: "bg-gray-50",
+        text: "text-gray-700",
+        border: "border-gray-200",
+      },
     };
     return styleMap[type] || styleMap["Other"];
   };
@@ -271,179 +307,142 @@ export default function CollectionsPage() {
         </h1>
 
         {/* Results List */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
+        <AnimatePresence>
           {loading ? (
-            <div className="flex justify-center items-center h-32">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex justify-center items-center h-32"
+            >
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            </div>
-          ) : searchResults.length === 0 ? (
-            <div className="flex justify-center items-center h-32 text-gray-500">
-              {lastSubmittedQuery
-                ? "No results found"
-                : "Enter a search term to find papers"}
-            </div>
+            </motion.div>
           ) : (
-            // Add this wrapper div to contain all the mapped results
-            <div>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="bg-white rounded-lg shadow-sm overflow-hidden mb-6"
+            >
               {searchResults.map((paper) => (
-                <div
+                <motion.div
                   key={paper.paperId}
-                  className="flex items-center p-4 border-b border-gray-100 hover:bg-gray-50"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors duration-200"
                 >
-                  <Checkbox
-                    checked={selectedPapers.has(paper.paperId)}
-                    onCheckedChange={() => togglePaperSelection(paper.paperId)}
-                    className="h-4 w-4 text-blue-500 rounded border-gray-300 mr-4"
-                  />
-                  <button
-                    onClick={() => handleAnalyzeClick(paper)}
-                    disabled={!paper.pdfUrl}
-                    className={`
-    w-10 h-10 rounded-full flex items-center justify-center mr-4
-    transition-all duration-200
-    ${
-      paper.pdfUrl
-        ? "bg-blue-500 hover:bg-blue-600 text-white"
-        : "bg-gray-200 cursor-not-allowed text-gray-400"
-    }
-  `}
-                    title={
-                      paper.pdfUrl
-                        ? "Analyze Paper"
-                        : "No PDF available for analysis"
-                    }
-                  >
-                    {loading ? (
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M9 5l7 7-7 7"
-                        />
-                      </svg>
-                    )}
-                  </button>
-                  <div className="flex-1">
-                    <div className="flex items-center mb-1">
-                      <span className="text-sm font-medium">
-                        {paper.authors.map((author) => author.name).join(", ")}
-                      </span>
-                      <span className={`ml-3 px-2 py-1 text-xs rounded ${getTypeStyle(paper.type)}`}>
-                        {paper.type}
-                      </span>
-                      {paper.year && (
-                        <span className="ml-3 text-sm text-gray-500">
-                          {paper.year}
+                  <div className="flex items-start space-x-4">
+                    <Checkbox
+                      checked={selectedPapers.has(paper.paperId)}
+                      onCheckedChange={() =>
+                        togglePaperSelection(paper.paperId)
+                      }
+                      className="mt-1 h-4 w-4 text-blue-500 rounded border-gray-300"
+                    />
+
+                    <div className="flex-1">
+                      {/* Title */}
+                      <h3 className="text-lg font-medium text-gray-900 mb-1">
+                        {paper.title}
+                      </h3>
+
+                      {/* Meta information */}
+                      <div className="flex items-center space-x-3 mb-2">
+                        {/* Authors */}
+                        <span className="text-sm text-gray-600">
+                          {paper.authors
+                            .map((author) => author.name)
+                            .join(", ")}
                         </span>
-                      )}
-                    </div>
-                    <h3 className="text-gray-900">{paper.title}</h3>
-                    <div className="text-sm text-gray-500 mt-1">
-                      <a
-                        href={paper.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:underline"
-                      >
-                        View on OpenAlex
-                      </a>
-                      {paper.pdfUrl && (
+
+                        {/* Year */}
+                        <span className="text-sm text-gray-500">
+                          ({paper.year})
+                        </span>
+
+                        {/* Type Badge */}
+                        <span
+                          className={`
+                            px-2 py-0.5 text-xs font-medium rounded-full
+                            ${getTypeStyle(paper.type).bg}
+                            ${getTypeStyle(paper.type).text}
+                            border ${getTypeStyle(paper.type).border}
+                          `}
+                        >
+                          {paper.type}
+                        </span>
+                      </div>
+
+                      {/* Links */}
+                      <div className="flex items-center space-x-4">
                         <a
-                          href={paper.pdfUrl}
+                          href={paper.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="ml-3 hover:underline"
+                          className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
                         >
-                          Open PDF
+                          <svg
+                            className="w-4 h-4 mr-1"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                            />
+                          </svg>
+                          View paper
                         </a>
-                      )}
+                        {paper.pdfUrl && (
+                          <a
+                            href={paper.pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+                          >
+                            <svg
+                              className="w-4 h-4 mr-1"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                              />
+                            </svg>
+                            PDF
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           )}
-        </div>
-
-        {/* Load More Section */}
-        {searchResults.length > 0 && (
-          <div className="border-t border-gray-100 pt-8 pb-12">
-            <div className="flex flex-col items-center">
-              <Button
-                onClick={handleLoadMore}
-                disabled={loadingMore}
-                variant="outline"
-                className="px-8 py-2 text-gray-600 border-gray-300 hover:bg-gray-50 transition-colors duration-200"
-              >
-                {loadingMore ? (
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-                    <span>Loading more papers...</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center space-x-2">
-                    <span>Load More Papers</span>
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
-                  </div>
-                )}
-              </Button>
-              <p className="text-sm text-gray-500 mt-2">
-                Showing {searchResults.length} papers
-              </p>
-            </div>
-          </div>
-        )}
-
+        </AnimatePresence>
         {/* Action Buttons */}
-        <div className="flex justify-center space-x-4">
-          <Button
-            onClick={openCollectionModal}
-            disabled={selectedPapers.size === 0}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 disabled:opacity-50"
-          >
-            <svg
-              className="w-5 h-5 mr-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-              />
-            </svg>
-            Save to Collection
-          </Button>
-
+        <motion.div
+          className="flex justify-between items-center mt-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
           <Button
             variant="outline"
+            className="flex items-center space-x-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
             onClick={handleJumpToChat}
-            className="border border-blue-500 text-blue-500 hover:bg-blue-50 px-6 py-2"
           >
             <svg
-              className="w-5 h-5 mr-2"
+              className="w-5 h-5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -455,9 +454,34 @@ export default function CollectionsPage() {
                 d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
               />
             </svg>
-            Jump to Chat
+            <span>Jump to Chat</span>
           </Button>
-        </div>
+
+          <motion.div whileTap={{ scale: 0.95 }}>
+            <Button
+              className={`bg-blue-500 hover:bg-blue-600 text-white flex items-center space-x-2 ${
+                selectedPapers.size === 0 ? "opacity-50 cursor-not-allowed" : ""
+              }`}
+              onClick={openCollectionModal}
+              disabled={selectedPapers.size === 0}
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+              <span>Save to Collection</span>
+            </Button>
+          </motion.div>
+        </motion.div>
 
         {/* Collection Selection Modal */}
         <Dialog
@@ -487,7 +511,7 @@ export default function CollectionsPage() {
                     <div
                       key={collection.id}
                       onClick={() => handleSaveToCollection(collection.id)}
-                      className="p-4 hover:bg-gray-50 rounded-lg cursor-pointer border"
+                      className="p-4 hover:bg-gray-50 rounded-lg cursor-pointer border transition-colors duration-200"
                     >
                       <h3 className="font-medium">{collection.name}</h3>
                       {collection.thesis && (
