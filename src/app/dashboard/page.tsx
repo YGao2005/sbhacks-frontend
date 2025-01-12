@@ -62,7 +62,7 @@ export default function DashboardPage() {
   };
 
   const handleDeleteClick = (collection: Collection, e: React.MouseEvent) => {
-    e.stopPropagation();
+    e.stopPropagation(); // Prevent triggering the parent onClick
     setCollectionToDelete(collection);
     setDeleteDialogOpen(true);
   };

@@ -159,14 +159,11 @@ export default function LibraryPage() {
 
 
   const handleSaveToCollection = async () => {
-    // Get all papers from all groups
     const allPapers = searchResults.flatMap(group => group.papers);
-    
-    // Filter selected papers with PDF URLs
     const selectedPapersWithPdf = allPapers.filter(paper => 
       selectedPapers.has(paper.id) && paper.pdfUrl
     );
-
+  
     if (selectedPapersWithPdf.length === 0) {
       toast({
         title: "No PDFs to upload",
@@ -174,25 +171,36 @@ export default function LibraryPage() {
       });
       return;
     }
-
+  
     setUploadLoading(true);
     const uploadPromises = selectedPapersWithPdf.map(async (paper) => {
       try {
-        const response = await fetch(paper.pdfUrl!);
-        const blob = await response.blob();
-
+        // First fetch PDF through our proxy
+        const proxyResponse = await fetch('/api/proxy-pdf', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ pdfUrl: paper.pdfUrl }),
+        });
+  
+        if (!proxyResponse.ok) {
+          throw new Error(`Failed to fetch PDF through proxy for paper: ${paper.title}`);
+        }
+  
+        const blob = await proxyResponse.blob();
         const formData = new FormData();
         formData.append('pdf', blob, `${paper.id}_${paper.title.slice(0, 50)}.pdf`);
-
+  
         const uploadResponse = await fetch('http://127.0.0.1:5000/upload_pdf', {
           method: 'POST',
           body: formData
         });
-
+  
         if (!uploadResponse.ok) {
           throw new Error(`Failed to upload PDF for paper: ${paper.title}`);
         }
-
+  
         return { 
           id: paper.id, 
           title: paper.title, 
@@ -203,16 +211,17 @@ export default function LibraryPage() {
         return { 
           id: paper.id, 
           title: paper.title, 
-          status: 'error' 
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error'
         };
       }
     });
-
+  
     try {
       const uploadResults = await Promise.all(uploadPromises);
       const successCount = uploadResults.filter(r => r.status === 'success').length;
       const errorCount = uploadResults.filter(r => r.status === 'error').length;
-
+  
       if (successCount > 0) {
         toast({
           title: "Upload Successful",
@@ -220,7 +229,7 @@ export default function LibraryPage() {
           variant: "default"
         });
       }
-
+  
       if (errorCount > 0) {
         toast({
           title: "Upload Partial Failure",
@@ -228,7 +237,7 @@ export default function LibraryPage() {
           variant: "destructive"
         });
       }
-
+  
       setSelectedPapers(new Set());
     } catch (error) {
       console.error('Comprehensive upload error:', error);
