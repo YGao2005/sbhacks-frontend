@@ -16,7 +16,7 @@ import {
 import { db } from "@/lib/firebase"; // Adjust this import based on your Firebase setup
 
 interface Paper {
-  id: string;
+  paperId: string;
   authors: { id: string; name: string }[];
   type: "Paper" | "Article";
   title: string;
@@ -31,6 +31,21 @@ interface SearchResultGroup {
   papers: Paper[];
   total: number;
 }
+
+// Add this function at the top of your file
+const generateUniqueId = () => {
+  // Use crypto.randomUUID() if available, otherwise fallback to a simple implementation
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  
+  // Fallback implementation
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 
 export default function LibraryPage() {
   const { toast } = useToast();
@@ -83,8 +98,8 @@ export default function LibraryPage() {
     concept: string
   ): Promise<SearchResultGroup> => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10-second timeout
-
+    const timeout = setTimeout(() => controller.abort(), 10000);
+  
     try {
       const response = await fetch("/api/library", {
         method: "POST",
@@ -94,19 +109,18 @@ export default function LibraryPage() {
         body: JSON.stringify({ query: searchQuery }),
         signal: controller.signal,
       });
-
+  
       clearTimeout(timeout);
-
+  
       if (!response.ok) {
-        // Handle rate limiting specifically
         if (response.status === 429) {
           throw new Error("Rate limit exceeded. Please try again later.");
         }
         throw new Error(`Error searching papers: ${response.statusText}`);
       }
-
+  
       const data = await response.json();
-
+  
       if (!data.papers || data.papers.length === 0) {
         return {
           concept,
@@ -114,9 +128,9 @@ export default function LibraryPage() {
           total: 0,
         };
       }
-
+  
       const results: Paper[] = data.papers.map((paper: any) => ({
-        id: paper.paperId,
+        paperId: generateUniqueId(), // Generate unique ID here
         authors: paper.authors || [],
         url: paper.url,
         type: "Paper",
@@ -124,7 +138,7 @@ export default function LibraryPage() {
         year: paper.year,
         pdfUrl: paper.pdfUrl,
       }));
-
+  
       return {
         concept,
         papers: results,
@@ -273,7 +287,7 @@ export default function LibraryPage() {
   
       const papersToAdd = searchResults
         .flatMap((group) => group.papers)
-        .filter((paper) => selectedPapers.has(paper.id));
+        .filter((paper) => selectedPapers.has(paper.paperId));
   
       // Start both operations concurrently
       const [collectionUpdate, pdfUploads] = await Promise.allSettled([
@@ -298,25 +312,25 @@ export default function LibraryPage() {
                 });
   
                 if (!response.ok) {
-                  throw new Error(`Failed to upload PDF for paper: ${paper.id}`);
+                  throw new Error(`Failed to upload PDF for paper: ${paper.paperId}`);
                 }
   
                 return {
-                  paperId: paper.id,
+                  paperId: paper.paperId,
                   status: 'success',
                   data: await response.json(),
                 };
               } catch (error) {
-                console.error(`Error uploading PDF for paper ${paper.id}:`, error);
+                console.error(`Error uploading PDF for paper ${paper.paperId}:`, error);
                 return {
-                  paperId: paper.id,
+                  paperId: paper.paperId,
                   status: 'error',
                   error: error instanceof Error ? error.message : 'Unknown error',
                 };
               }
             }
             return {
-              paperId: paper.id,
+              paperId: paper.paperId,
               status: 'skipped',
               message: 'No PDF URL available',
             };
@@ -547,7 +561,7 @@ export default function LibraryPage() {
                     {group.papers.length > 0 ? (
                       group.papers.map((paper) => (
                         <motion.div
-                          key={paper.id}
+                          key={paper.paperId}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
@@ -556,9 +570,9 @@ export default function LibraryPage() {
                         >
                           <div className="flex items-start space-x-4">
                             <Checkbox
-                              checked={selectedPapers.has(paper.id)}
+                              checked={selectedPapers.has(paper.paperId)}
                               onCheckedChange={() =>
-                                togglePaperSelection(paper.id)
+                                togglePaperSelection(paper.paperId)
                               }
                               className="mt-1 h-4 w-4 text-blue-500 rounded border-gray-300"
                             />
@@ -729,7 +743,7 @@ export default function LibraryPage() {
                   />
                 </svg>
               )}
-              <span>{uploadLoading ? "Saving..." : "Save to Collection"}</span>
+              <span>{uploadLoading ? "Analyzing Paper..." : "Save to Collection"}</span>
             </Button>
           </motion.div>
 

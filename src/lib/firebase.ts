@@ -220,15 +220,21 @@ updateMessages: async (collectionId: string, newMessages: Message[]) => {
     try {
       const collectionRef = doc(db, 'collections', collectionId);
       const collectionDoc = await getDoc(collectionRef);
-
+  
       if (!collectionDoc.exists()) {
         throw new Error('Collection not found');
       }
-
+  
       const collectionData = collectionDoc.data();
       
+      // Ensure each paper has a paperId
+      const papersWithIds = papers.map(paper => ({
+        ...paper,
+        paperId: paper.paperId || crypto.randomUUID() // or any other unique ID generation method
+      }));
+  
       await updateDoc(collectionRef, {
-        papers: arrayUnion(...papers),
+        papers: arrayUnion(...papersWithIds),
         papersCount: (collectionData.papers?.length || 0) + papers.length,
         lastUpdated: Date.now()
       });
@@ -237,6 +243,7 @@ updateMessages: async (collectionId: string, newMessages: Message[]) => {
       throw error;
     }
   },
+  
   deletePaperFromCollection: async (collectionId: string, paperId: string): Promise<void> => {
     try {
       const collectionRef = doc(db, 'collections', collectionId);
