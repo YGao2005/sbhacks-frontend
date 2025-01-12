@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { firebaseOperations, Collection } from '@/lib/firebase';
+import { firebaseOperations, Collection, Paper } from '@/lib/firebase';
 import { Button } from './../../components/ui/button';
 
 export default function CollectionPage({
@@ -126,9 +126,9 @@ export default function CollectionPage({
       </div>
 
       <div className="mt-8">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Papers ({collection.papersCount})</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Papers ({collection.papers.length})</h2>
         
-        {collection.papersCount === 0 ? (
+        {collection.papers.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm p-6 text-center">
             <div className="bg-gray-100 rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
               <svg 
@@ -166,7 +166,20 @@ export default function CollectionPage({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Paper cards will go here when we implement paper management */}
+            {collection.papers.map((paper: Paper, index: number) => (
+              <div key={index} className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
+                <h3 className="text-lg font-medium text-gray-900 mb-2">{paper.title}</h3>
+                <p className="text-sm text-gray-600 mb-2">
+                  Authors: {paper.authors.map(author => author.name).join(', ')}
+                </p>
+                <p className="text-sm text-gray-600 mb-2">Year: {paper.year}</p>
+                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                  paper.type === 'Paper' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                }`}>
+                  {paper.type}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>

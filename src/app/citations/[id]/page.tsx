@@ -22,7 +22,8 @@ export default function CitationPage() {
         try {
           const fetchedCollection = await firebaseOperations.getCollection(collectionId);
           setCollection(fetchedCollection);
-          const fetchedPapers = await firebaseOperations.getPapersForCollection(collectionId);
+          // Assuming papers are stored in the collection
+          const fetchedPapers = fetchedCollection?.papers || [];
           setPapers(fetchedPapers.map(paper => ({ ...paper, selected: false })));
         } catch (error) {
           console.error('Error fetching collection or papers:', error);
@@ -42,9 +43,8 @@ export default function CitationPage() {
 
   const handleGenerateCitations = () => {
     const selectedPapers = papers.filter(paper => paper.selected);
-    // Implement citation generation logic here
     console.log('Generating citations for:', selectedPapers);
-    // You might want to update the state to show the generated citations
+    // Implement citation generation logic here
   };
 
   if (loading) {
@@ -63,7 +63,7 @@ export default function CitationPage() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Select</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Author</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Author(s)</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Year</th>
@@ -71,14 +71,16 @@ export default function CitationPage() {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {papers.map((paper, index) => (
-              <tr key={paper.id}>
+              <tr key={index}>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <Checkbox
                     checked={paper.selected}
                     onCheckedChange={() => handleCheckboxChange(index)}
                   />
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">{paper.author}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {paper.authors.map(author => author.name).join(', ')}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                     paper.type === 'Paper' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
