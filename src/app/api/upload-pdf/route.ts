@@ -2,6 +2,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fetch from 'node-fetch'
 import FormData from 'form-data'
+import puppeteer from 'puppeteer'
+
+async function isPDF(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, { method: 'HEAD' })
+    const contentType = response.headers.get('content-type')
+    return contentType?.includes('application/pdf') || false
+  } catch (error) {
+    return false
+  }
+}
+
+async function convertWebPageToPDF(url: string): Promise<Buffer> {
+  const browser = await puppeteer.launch({
+    headless: true,
+  })
+  try {
+    const page = await browser.newPage()
+    await page.goto(url, { waitUntil: 'networkidle0' })
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+    })
+    return Buffer.from(pdfBuffer)
+  } finally {
+    await browser.close()
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,14 +38,22 @@ export async function POST(request: NextRequest) {
 
     if (!pdfUrl) {
       return NextResponse.json(
-        { message: 'PDF URL is required' },
+        { message: 'URL is required' },
         { status: 400 }
       )
     }
 
-    // Fetch the PDF from the provided URL
-    const pdfResponse = await fetch(pdfUrl)
-    const pdfBuffer = await pdfResponse.buffer()
+    let pdfBuffer: Buffer
+    
+    // Check if the URL is already a PDF
+    if (await isPDF(pdfUrl)) {
+      // Fetch the PDF directly
+      const pdfResponse = await fetch(pdfUrl)
+      pdfBuffer = await pdfResponse.buffer()
+    } else {
+      // Convert webpage to PDF
+      pdfBuffer = await convertWebPageToPDF(pdfUrl)
+    }
 
     // Create a FormData instance
     const formData = new FormData()
@@ -40,10 +76,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(flaskData)
 
   } catch (error) {
-    console.error('Error uploading PDF:', error)
+    console.error('Error processing document:', error)
     return NextResponse.json(
       { 
-        message: 'Error uploading PDF',
+        message: 'Error processing document',
         error: (error as Error).message 
       },
       { status: 500 }
@@ -51,6 +87,5 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Optional: Add size limit configuration
-export const runtime = 'nodejs' // optional
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
