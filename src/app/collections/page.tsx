@@ -211,52 +211,16 @@ export default function CollectionsPage() {
     setIsCollectionModalOpen(true);
   };
 
-  const getTypeStyle = (
-    type: string
-  ): { bg: string; text: string; border: string } => {
-    const styleMap: {
-      [key: string]: { bg: string; text: string; border: string };
-    } = {
-      Article: {
-        bg: "bg-blue-50",
-        text: "text-blue-700",
-        border: "border-blue-200",
-      },
-      "Book Chapter": {
-        bg: "bg-purple-50",
-        text: "text-purple-700",
-        border: "border-purple-200",
-      },
-      Dataset: {
-        bg: "bg-green-50",
-        text: "text-green-700",
-        border: "border-green-200",
-      },
-      Preprint: {
-        bg: "bg-amber-50",
-        text: "text-amber-700",
-        border: "border-amber-200",
-      },
-      Dissertation: {
-        bg: "bg-red-50",
-        text: "text-red-700",
-        border: "border-red-200",
-      },
-      Book: {
-        bg: "bg-indigo-50",
-        text: "text-indigo-700",
-        border: "border-indigo-200",
-      },
-      Review: {
-        bg: "bg-pink-50",
-        text: "text-pink-700",
-        border: "border-pink-200",
-      },
-      Other: {
-        bg: "bg-gray-50",
-        text: "text-gray-700",
-        border: "border-gray-200",
-      },
+  const getTypeStyle = (type: string): string => {
+    const styleMap: { [key: string]: string } = {
+      Article: "bg-rose-50 text-rose-700 border-rose-200",
+      Review: "bg-sky-50 text-sky-700 border-sky-200",
+      "Book Chapter": "bg-purple-50 text-purple-700 border-purple-200",
+      Dataset: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      Preprint: "bg-amber-50 text-amber-700 border-amber-200",
+      Dissertation: "bg-red-50 text-red-700 border-red-200",
+      Book: "bg-violet-50 text-violet-700 border-violet-200",
+      Other: "bg-slate-50 text-slate-700 border-slate-200",
     };
     return styleMap[type] || styleMap["Other"];
   };
@@ -349,33 +313,53 @@ export default function CollectionsPage() {
                       </h3>
 
                       {/* Meta information */}
-                      <div className="flex items-center space-x-3 mb-2">
-                        {/* Authors */}
-                        <span className="text-sm text-gray-600">
-                          {paper.authors
-                            .map((author) => author.name)
-                            .join(", ")}
-                        </span>
+                      <div className="flex items-center justify-between mb-2">
+                      {/* Authors on the left */}
+                      <span className="text-sm text-gray-600">
+                        {paper.authors
+                          .map((author) => author.name)
+                          .join(", ")}
+                      </span>
 
-                        {/* Year */}
-                        <span className="text-sm text-gray-500">
-                          ({paper.year})
-                        </span>
-
-                        {/* Type Badge */}
-                        <span
-                          className={`
-                            px-2 py-0.5 text-xs font-medium rounded-full
-                            ${getTypeStyle(paper.type).bg}
-                            ${getTypeStyle(paper.type).text}
-                            border ${getTypeStyle(paper.type).border}
-                          `}
-                        >
-                          {paper.type}
-                        </span>
+                        <div className="flex items-center space-x-3">
+                          <span className="text-sm text-gray-500">
+                            ({paper.year})
+                          </span>
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full inline-flex ${
+                            paper.type === 'article' ? 'bg-rose-100 text-rose-800' : 
+                            paper.type === 'Paper' ? 'bg-green-100 text-green-800' : 
+                            paper.type === 'review' ? 'bg-sky-100 text-sky-800' :
+                            paper.type === 'book chapter' ? 'bg-purple-100 text-purple-800' :
+                            paper.type === 'dataset' ? 'bg-emerald-100 text-emerald-800' :
+                            paper.type === 'preprint' ? 'bg-amber-100 text-amber-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {paper.type}
+                          </span>
+                          
+                        </div>
                       </div>
 
                       {/* Links */}
+                      <button
+                          onClick={() => router.push(`/summary/${paper.paperId}`)}
+                          className="inline-flex items-center text-sm text-blue-600 hover:text-gray-800"
+                        >
+                          <svg
+                            className="w-4 h-4 mr-1"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4v.01M9 16v.01"
+                            />
+                          </svg>
+                          Summarize
+                        </button>
                       <div className="flex items-center space-x-4">
                         <a
                           href={paper.url}

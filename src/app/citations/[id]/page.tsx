@@ -75,6 +75,14 @@ export default function CitationPage() {
     ));
   };
 
+  const [allSelected, setAllSelected] = useState(false);
+
+  const handleSelectAll = () => {
+    const newSelectedState = !allSelected;
+    setPapers(papers.map(paper => ({ ...paper, selected: newSelectedState })));
+    setAllSelected(newSelectedState);
+  };
+
   const handleGenerateCitations = () => {
     const selectedPapers = papers.filter(paper => paper.selected);
     let citations: string[] = [];
@@ -113,7 +121,35 @@ export default function CitationPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+        <button
+          onClick={() => router.push(`/theses/${collection.id}`)}
+          className="flex items-center text-gray-600 mb-4 hover:text-gray-900"
+        >
+          <svg
+            className="w-4 h-4 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M10 19l-7-7m0 0l7-7m-7 7h18"
+            />
+          </svg>
+          Back to Collection
+        </button>
       <h1 className="text-2xl font-bold mb-6">Citations for "{collection.name}" Collection</h1>
+      <div className="mb-4">
+        <Button 
+          onClick={handleSelectAll}
+          variant="outline"
+          size="sm"
+        >
+          {allSelected ? 'Deselect All' : 'Select All'}
+        </Button>
+      </div>
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="min-w-full">
           <thead className="bg-gray-50">
@@ -150,8 +186,14 @@ export default function CitationPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      paper.type === 'Paper' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full inline-flex ${
+                      paper.type === 'article' ? 'bg-rose-100 text-rose-800' : 
+                      paper.type === 'Paper' ? 'bg-green-100 text-green-800' : 
+                      paper.type === 'review' ? 'bg-sky-100 text-sky-800' :
+                      paper.type === 'book chapter' ? 'bg-purple-100 text-purple-800' :
+                      paper.type === 'dataset' ? 'bg-emerald-100 text-emerald-800' :
+                      paper.type === 'preprint' ? 'bg-amber-100 text-amber-800' :
+                      'bg-gray-100 text-gray-800'
                     }`}>
                       {paper.type}
                     </span>
