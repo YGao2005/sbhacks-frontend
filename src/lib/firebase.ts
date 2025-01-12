@@ -79,6 +79,18 @@ export const firebaseOperations = {
     }
   },
 
+  updateMessages: async (collectionId: string, newMessages: Message[]) => {
+    const collectionRef = doc(db, 'collections', collectionId);
+    try {
+      await updateDoc(collectionRef, {
+        messages: arrayUnion(...newMessages)
+      });
+    } catch (error) {
+      console.error('Error updating messages:', error);
+      throw error;
+    }
+  },
+
   getMessages: async (collectionId: string, paperId: string): Promise<Message[]> => {
     try {
       const messagesRef = collection(db, 'collections', collectionId, 'messages');

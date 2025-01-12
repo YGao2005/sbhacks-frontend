@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { firebaseOperations, Collection, Paper } from '@/lib/firebase';
 import { Button } from "./../../components/ui/button";
 import { Textarea } from "./../../components/ui/textarea";
+import { motion, AnimatePresence } from 'framer-motion'; // Add this import
 
 interface Message {
   id: string;
@@ -67,113 +68,163 @@ const ChatPage = () => {
     router.push(`/chat/${collectionId}/${paperId}`);
   };
 
+  const fadeIn = {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 }
+  };
+
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-        {/* Papers Section */}
-        <div className="px-4 py-2">
-          <h3 className="text-sm font-medium text-gray-900 mb-2">Papers</h3>
-          <div className="space-y-2">
-            {papers.map((paper) => (
-              <div 
-                key={paper.paperId}
-                className="flex items-center space-x-2 p-2 hover:bg-gray-100 rounded-md cursor-pointer"
-                onClick={() => handlePaperClick(paper.paperId)}
-              >
-                <div className="flex-shrink-0">
-                  <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      {/* Compact Sidebar */}
+      <motion.aside 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+        className="w-72 bg-white rounded-xl border border-gray-200 h-5/6 flex flex-col shadow-lg overflow-hidden"
+      >
+        {/* Sidebar Header */}
+        <div className="p-4 border-b border-gray-200">
+          <h3 className="text-md font-semibold text-gray-900">Resources</h3>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Papers Section */}
+          <div className="p-3">
+            <h4 className="text-sm font-medium text-gray-700 mb-2 px-2">Papers</h4>
+            <div className="space-y-1">
+              {papers.map((paper) => (
+                <motion.div 
+                  key={paper.paperId}
+                  {...fadeIn}
+                  transition={{ duration: 0.2 }}
+                  className="flex items-center p-2 hover:bg-gray-100 rounded-md cursor-pointer transition-colors duration-200"
+                  onClick={() => handlePaperClick(paper.paperId)}
+                >
+                  <svg 
+                    className="w-4 h-4 text-gray-500 mr-2"
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      strokeWidth="2" 
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
                   </svg>
+                  <div className="flex-1 min-w-0">
+                    <h5 className="text-sm font-medium text-gray-900 truncate">{paper.title}</h5>
+                    <p className="text-xs text-gray-500">{paper.year}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+
+          {/* Charts Section */}
+          <div className="p-3 border-t border-gray-100">
+            <h4 className="text-sm font-medium text-gray-700 mb-2 px-2">Charts</h4>
+            <div className="space-y-1">
+              {charts.map((chart) => (
+                <div 
+                  key={chart.id}
+                  className="flex items-center p-2 hover:bg-gray-100 rounded-md cursor-pointer transition-colors duration-200"
+                >
+                  <svg 
+                    className="w-4 h-4 text-gray-500 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M8 13v-1m4 1v-3m4 3V8M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
+                    />
+                  </svg>
+                  <span className="text-sm text-gray-900 truncate">{chart.title}</span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-700 truncate">{paper.title}</div>
-                  <div className="text-xs text-gray-500">{paper.year}</div>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
+      </motion.aside>
 
-        {/* Charts Section */}
-        <div className="px-4 py-2">
-          <h3 className="text-sm font-medium text-gray-900 mb-2">Charts and Graphs</h3>
-          <div className="space-y-2">
-            {charts.map((chart) => (
-              <div 
-                key={chart.id}
-                className="flex items-center space-x-2 p-2 hover:bg-gray-100 rounded-md cursor-pointer"
-              >
-                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 13v-1m4 1v-3m4 3V8M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-                </svg>
-                <span className="text-sm text-gray-700">{chart.title}</span>
-              </div>
-            ))}
-          </div>
-          
-          <button className="flex items-center space-x-2 p-2 text-gray-500 hover:text-gray-700 text-sm mt-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            <span>Create New Chart</span>
-          </button>
-        </div>
-      </div>
+      {/* Main Chat Area */}
+      <main className="h-5/6 flex-1 flex flex-col bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden">
 
-      {/* Chat Area */}
-      <div className="flex-1 flex flex-col">
-        {/* Chat Header */}
-        <div className="bg-white border-b border-gray-200 p-4 flex items-center">
+        {/* Compact Header */}
+        <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center shadow-sm">
           <button 
-            className="p-2 hover:bg-gray-100 rounded-full"
+            className="p-1.5 hover:bg-gray-100 rounded-full transition-colors duration-200"
             onClick={() => router.push('/chat')}
           >
-            <svg className="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+            <svg 
+              className="w-4 h-4 text-gray-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path 
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           </button>
-          <div className="ml-2">
-            <h2 className="text-lg font-medium text-gray-900">
+          <div className="ml-3 min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900 truncate">
               {collection?.name || 'Loading...'}
             </h2>
             {collection?.thesis && (
-              <p className="text-sm text-gray-500 mt-1">{collection.thesis}</p>
+              <p className="text-sm text-gray-500 truncate">{collection.thesis}</p>
             )}
           </div>
-        </div>
+        </header>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.map((message) => (
-            <div 
-              key={message.id}
-              className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
-            >
-              <div 
-                className={`max-w-2xl rounded-lg p-4 ${
-                  message.isUser 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-gray-100 text-gray-900'
-                }`}
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <AnimatePresence initial={false}>
+            {messages.map((message) => (
+              <motion.div 
+                key={message.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
               >
-                <p>{message.content}</p>
-                <div className={`text-xs mt-1 ${message.isUser ? 'text-blue-100' : 'text-gray-500'}`}>
-                  {message.timestamp}
+                <div className={`max-w-2xl rounded-lg p-3 ${
+                  message.isUser 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-100 text-gray-900'
+                } shadow-sm`}
+                >
+                  <p className="text-sm">{message.content}</p>
+                  <time className={`text-xs mt-1 block ${
+                    message.isUser ? 'text-blue-100' : 'text-gray-500'
+                  }`}>
+                    {message.timestamp}
+                  </time>
                 </div>
-              </div>
-            </div>
-          ))}
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
 
-        {/* Input Area */}
-        <div className="bg-white border-t border-gray-200 p-4">
-          <div className="flex items-end space-x-2">
+        {/* Compact Input Area */}
+        <footer className="bg-white border-t border-gray-200 p-4">
+          <div className="flex items-end space-x-3 max-w-4xl mx-auto">
             <Textarea
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Write message"
-              className="flex-1 min-h-[2.5rem] max-h-32 resize-none text-gray-900"
+              placeholder="Type your message..."
+              className="flex-1 min-h-[2.5rem] max-h-28 resize-none rounded-md focus:ring-2 focus:ring-blue-500"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -181,32 +232,31 @@ const ChatPage = () => {
                 }
               }}
             />
-            <div className="flex items-center space-x-2">
-              <button className="p-2 text-gray-500 hover:text-gray-700">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                </svg>
-              </button>
-              <button className="p-2 text-gray-500 hover:text-gray-700">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </button>
-              <Button 
-                className="bg-blue-500 hover:bg-blue-600 text-white"
-                onClick={handleSendMessage}
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md shadow-sm transition-colors duration-200 flex items-center"
+              onClick={handleSendMessage}
+            >
+              Send
+              <svg 
+                className="w-4 h-4 ml-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                Send
-                <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                </svg>
-              </Button>
-            </div>
+                <path 
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M14 5l7 7m0 0l-7 7m7-7H3"
+                />
+              </svg>
+            </Button>
           </div>
-        </div>
-      </div>
+        </footer>
+      </main>
     </div>
   );
 };
+
 
 export default ChatPage;
