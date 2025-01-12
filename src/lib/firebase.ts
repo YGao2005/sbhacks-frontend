@@ -149,7 +149,31 @@ export const firebaseOperations = {
       throw error;
     }
   },
+  deletePaperFromCollection: async (collectionId: string, paperId: string): Promise<void> => {
+    try {
+      const collectionRef = doc(db, 'collections', collectionId);
+      const collectionDoc = await getDoc(collectionRef);
 
+      if (!collectionDoc.exists()) {
+        throw new Error('Collection not found');
+      }
+
+      const collectionData = collectionDoc.data() as Collection;
+      
+      // Filter out the paper with the given paperId
+      const updatedPapers = collectionData.papers.filter(paper => paper.paperId !== paperId);
+
+      // Update the collection with the filtered papers
+      await updateDoc(collectionRef, {
+        papers: updatedPapers,
+        papersCount: updatedPapers.length,
+        lastUpdated: Date.now()
+      });
+    } catch (error) {
+      console.error('Error deleting paper from collection:', error);
+      throw error;
+    }
+  },
   // Delete a collection
   deleteCollection: async (collectionId: string): Promise<void> => {
     try {
@@ -159,6 +183,7 @@ export const firebaseOperations = {
       throw error;
     }
   }
+
   
 };
 
