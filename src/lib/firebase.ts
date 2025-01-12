@@ -14,11 +14,17 @@ import {
 
 // Define the Paper interface
 export interface Paper {
-  id: number;
-  author: string;
-  type: 'Paper' | 'Article';
+  paperId: string;  // Changed from id: number
   title: string;
+  url: string;
+  pdfUrl: string;
+  type: string;
   year: number;
+  authors: {
+    id: string;
+    name: string;
+  }[];
+  selected?: boolean;
 }
 
 // Define the Collection type
