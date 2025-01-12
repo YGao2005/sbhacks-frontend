@@ -41,12 +41,13 @@ export interface Collection {
 export type CollectionData = Omit<Collection, 'id'>;
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+  apiKey: "AIzaSyDem-xAuzORzlBxfCAUte1enF0EasRBMqE",
+  authDomain: "sbhacks-2e247.firebaseapp.com",
+  projectId: "sbhacks-2e247",
+  storageBucket: "sbhacks-2e247.firebasestorage.app",
+  messagingSenderId: "19060159090",
+  appId: "1:19060159090:web:8c399f8d2b343766c348eb",
+  measurementId: "G-84ZT1Y69CT"
 };
 
 // Initialize Firebase
@@ -160,3 +161,5 @@ export const firebaseOperations = {
   }
   
 };
+
+export { db };
