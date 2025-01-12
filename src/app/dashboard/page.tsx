@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { firebaseOperations } from '@/lib/firebase';
+import { firebaseOperations, Collection } from '@/lib/firebase'; // Import Collection type from firebase
 import {
   Dialog,
   DialogContent,
@@ -16,13 +16,7 @@ import { Button } from "./../components/ui/button";
 import { Input } from "./../components/ui/input";
 import { Textarea } from "./../components/ui/textarea";
 
-interface Collection {
-  id: string;
-  name: string;
-  thesis?: string;
-  papersCount: number;
-  lastUpdated: string;
-}
+// Remove local Collection interface since we're importing it from firebase
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -32,7 +26,6 @@ export default function DashboardPage() {
   const [newCollection, setNewCollection] = useState({ title: '', thesis: '' });
   const [collections, setCollections] = useState<Collection[]>([]);
 
-  // Load collections from Firebase on component mount
   useEffect(() => {
     const loadCollections = async () => {
       const fetchedCollections = await firebaseOperations.getCollections();
@@ -50,7 +43,9 @@ export default function DashboardPage() {
         name: newCollection.title,
         thesis: newCollection.thesis,
         papersCount: 0,
-        lastUpdated: new Date().toISOString().split('T')[0]
+        lastUpdated: Date.now(), // Use timestamp number instead of ISO string
+        papers: [], // Initialize empty papers array
+        userId: '' // This will be set by the Firebase operation
       };
     
       const createdCollection = await firebaseOperations.createCollection(newCollectionItem);
@@ -59,7 +54,6 @@ export default function DashboardPage() {
       setNewCollection({ title: '', thesis: '' });
       setIsOpen(false);
       
-      // Navigate to library with the thesis for searching
       const encodedThesis = encodeURIComponent(newCollection.thesis || newCollection.title);
       router.push(`/library?thesis=${encodedThesis}&newCollection=true`);
     } catch (error) {
@@ -68,7 +62,7 @@ export default function DashboardPage() {
   };
 
   const handleDeleteClick = (collection: Collection, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent triggering the parent onClick
+    e.stopPropagation();
     setCollectionToDelete(collection);
     setDeleteDialogOpen(true);
   };
@@ -87,10 +81,9 @@ export default function DashboardPage() {
   };
 
   const handleCollectionClick = (collection: Collection) => {
-    router.push(`/collection/${collection.id}`);
+    router.push(`/theses/${collection.id}`);
   };
 
-  // Rest of your component remains exactly the same...
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Main Content */}
@@ -170,32 +163,6 @@ export default function DashboardPage() {
           </Dialog>
         </div>
 
-        {/* Delete Confirmation Dialog */}
-        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Delete Collection</DialogTitle>
-              <DialogDescription>
-                Are you sure you want to delete "{collectionToDelete?.name}"? This action cannot be undone.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="flex space-x-2 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => setDeleteDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleDeleteConfirm}
-              >
-                Delete
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
         {/* Collections Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {collections.map((collection) => (
@@ -213,18 +180,9 @@ export default function DashboardPage() {
                   onClick={(e) => handleDeleteClick(collection, e)}
                   className="text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                 >
-                  <svg 
-                    className="w-5 h-5" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth="2" 
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
-                    />
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
                 </button>
               </div>
@@ -242,18 +200,9 @@ export default function DashboardPage() {
         {collections.length === 0 && (
           <div className="flex flex-col items-center justify-center h-96">
             <div className="bg-gray-100 rounded-full p-4 mb-4">
-              <svg 
-                className="w-8 h-8 text-gray-400" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth="2" 
-                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" 
-                />
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No Collections Yet</h3>

@@ -1,6 +1,25 @@
 // lib/firebase.ts
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  getDocs, 
+  deleteDoc, 
+  doc,
+  getDoc,
+  updateDoc,
+  arrayUnion
+} from 'firebase/firestore';
+
+// Define the Paper interface
+export interface Paper {
+  id: number;
+  author: string;
+  type: 'Paper' | 'Article';
+  title: string;
+  year: number;
+}
 
 // Define the Collection type
 export interface Collection {
@@ -8,14 +27,14 @@ export interface Collection {
   name: string;
   thesis?: string;
   papersCount: number;
-  lastUpdated: string;
+  lastUpdated: number;
+  papers: Paper[];
 }
 
-// Define the type for collection data without ID (used when creating)
+// Define the type for collection data without ID
 export type CollectionData = Omit<Collection, 'id'>;
 
 const firebaseConfig = {
-  // Replace with your Firebase config
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
@@ -45,13 +64,64 @@ export const firebaseOperations = {
     }
   },
 
-  // Create a new collection
-  createCollection: async (collectionData: CollectionData): Promise<Collection> => {
+  // Get a single collection by ID
+  getCollection: async (collectionId: string): Promise<Collection | null> => {
     try {
-      const docRef = await addDoc(collection(db, 'collections'), collectionData);
-      return { id: docRef.id, ...collectionData };
+      const docRef = doc(db, 'collections', collectionId);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        return {
+          id: docSnap.id,
+          ...docSnap.data()
+        } as Collection;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting collection:', error);
+      throw error;
+    }
+  },
+
+  // Create a new collection
+  createCollection: async (collectionData: Omit<CollectionData, 'papers' | 'lastUpdated'>): Promise<Collection> => {
+    try {
+      const collectionWithDefaults = {
+        ...collectionData,
+        papers: [],
+        lastUpdated: Date.now()
+      };
+
+      const docRef = await addDoc(collection(db, 'collections'), collectionWithDefaults);
+      return { 
+        id: docRef.id, 
+        ...collectionWithDefaults 
+      };
     } catch (error) {
       console.error('Error creating collection:', error);
+      throw error;
+    }
+  },
+
+  // Add papers to a collection
+  addPapersToCollection: async (collectionId: string, papers: Paper[]): Promise<void> => {
+    try {
+      const collectionRef = doc(db, 'collections', collectionId);
+      const collectionDoc = await getDoc(collectionRef);
+
+      if (!collectionDoc.exists()) {
+        throw new Error('Collection not found');
+      }
+
+      const collectionData = collectionDoc.data();
+      
+      await updateDoc(collectionRef, {
+        papers: arrayUnion(...papers),
+        papersCount: (collectionData.papers?.length || 0) + papers.length,
+        lastUpdated: Date.now()
+      });
+    } catch (error) {
+      console.error('Error adding papers to collection:', error);
       throw error;
     }
   },

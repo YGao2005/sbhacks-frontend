@@ -5,7 +5,15 @@ import { useRouter } from 'next/navigation';
 import { Button } from "./../components/ui/button";
 import { Checkbox } from "./../components/ui/checkbox";
 import { Input } from "./../components/ui/input";
-import { searchPapers } from './search-api'; // Import the mock search API
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "./../components/ui/dialog";
+import { searchPapers } from './search-api';
+import { firebaseOperations } from '@/lib/firebase';
 
 export interface Paper {
   id: number;
@@ -16,6 +24,14 @@ export interface Paper {
   selected?: boolean;
 }
 
+interface Collection {
+  id: string;
+  name: string;
+  thesis?: string;
+  papersCount: number;
+  lastUpdated: number;
+}
+
 export default function CollectionsPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
@@ -23,6 +39,9 @@ export default function CollectionsPage() {
   const [selectedPapers, setSelectedPapers] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [lastSubmittedQuery, setLastSubmittedQuery] = useState('');
+  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [loadingCollections, setLoadingCollections] = useState(false);
 
   // Initial search when component loads
   useEffect(() => {
@@ -76,6 +95,39 @@ export default function CollectionsPage() {
     router.push('/chat');
   };
 
+  const fetchUserCollections = async () => {
+    setLoadingCollections(true);
+    try {
+      const userCollections = await firebaseOperations.getCollections();
+      setCollections(userCollections);
+    } catch (error) {
+      console.error('Error fetching collections:', error);
+    } finally {
+      setLoadingCollections(false);
+    }
+  };
+
+  const handleSaveToCollection = async (collectionId: string) => {
+    try {
+      const selectedPapersArray = Array.from(selectedPapers);
+      const selectedPapersData = searchResults
+        .filter(paper => selectedPapers.has(paper.id));
+      
+      await firebaseOperations.addPapersToCollection(collectionId, selectedPapersData);
+      setIsCollectionModalOpen(false);
+      setSelectedPapers(new Set());
+      // Optionally show a success message
+    } catch (error) {
+      console.error('Error saving papers to collection:', error);
+      // Optionally show an error message
+    }
+  };
+
+  const openCollectionModal = () => {
+    fetchUserCollections();
+    setIsCollectionModalOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-4xl mx-auto">
@@ -92,9 +144,7 @@ export default function CollectionsPage() {
               type="text"
               placeholder="Find a paper or article"
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-              }}
+              onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               className="flex-1 border-none focus:ring-0 text-base text-gray-900"
             />
@@ -164,8 +214,9 @@ export default function CollectionsPage() {
         {/* Action Buttons */}
         <div className="flex justify-center space-x-4">
           <Button
-            onClick={() => {/* Handle save to collection */}}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2"
+            onClick={openCollectionModal}
+            disabled={selectedPapers.size === 0}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 disabled:opacity-50"
           >
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
@@ -186,6 +237,49 @@ export default function CollectionsPage() {
             Jump to Chat
           </Button>
         </div>
+
+        {/* Collection Selection Modal */}
+        <Dialog open={isCollectionModalOpen} onOpenChange={setIsCollectionModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Choose Collection</DialogTitle>
+              <DialogDescription>
+                Select a collection to add {selectedPapers.size} paper{selectedPapers.size !== 1 ? 's' : ''} to:
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[400px] overflow-y-auto">
+              {loadingCollections ? (
+                <div className="flex justify-center items-center h-32">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                </div>
+              ) : collections.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No collections found. Create a collection first.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {collections.map((collection) => (
+                    <div
+                      key={collection.id}
+                      onClick={() => handleSaveToCollection(collection.id)}
+                      className="p-4 hover:bg-gray-50 rounded-lg cursor-pointer border"
+                    >
+                      <h3 className="font-medium">{collection.name}</h3>
+                      {collection.thesis && (
+                        <p className="text-sm text-gray-500 mt-1 truncate">
+                          {collection.thesis}
+                        </p>
+                      )}
+                      <div className="text-sm text-gray-400 mt-2">
+                        {collection.papersCount} papers
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
